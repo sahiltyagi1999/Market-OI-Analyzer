@@ -7,6 +7,7 @@ import os
 import threading
 import time
 from collections import deque
+from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
@@ -14,7 +15,7 @@ from urllib.parse import urlencode
 
 import requests
 
-from options_intelligence import analyze_options_market, infer_step, iso_now, safe_num
+from options_intelligence import analyze_options_market, infer_step, iso_now, normalize_history, safe_num
 
 
 KITE_ROOT = "https://api.kite.trade"
@@ -397,6 +398,31 @@ class KiteMarketService:
         if self.access_token and parse_bool(os.environ.get("KITE_VALIDATE_ON_STARTUP"), True):
             self.validate_session()
 
+    def _merged_history(self, history_override=None, current_snapshot=None):
+        history = list(self._history)
+        if history_override is not None:
+            history.extend(item for item in history_override if item)
+        history = normalize_history(history, current_snapshot)
+        self._history.clear()
+        for item in history[-self._history.maxlen:]:
+            self._history.append(item)
+        return list(self._history)
+
+    def _reanalyze_cached_snapshot(self, cached_result, history_override=None):
+        result = deepcopy(cached_result)
+        snapshot = result.get("snapshot") or {}
+        history = self._merged_history(history_override, snapshot)
+        status = self.status()
+        analysis = analyze_options_market(snapshot, history, self.weights, status, day_history=history)
+        snapshot["levels"] = analysis.get("support_resistance")
+        result["snapshot"] = snapshot
+        result["analysis"] = analysis
+        result["status"] = status
+        result["cached"] = True
+        result["history_count"] = len(history)
+        self._last_snapshot = result
+        return result
+
     def configured(self):
         return bool(self.api_key and self.access_token and self.auth_state != AUTH_REQUIRED)
 
@@ -756,8 +782,7 @@ class KiteMarketService:
                 and not force
                 and time.time() - self._last_snapshot_at < self.snapshot_seconds
             ):
-                self._last_snapshot["cached"] = True
-                return self._last_snapshot
+                return self._reanalyze_cached_snapshot(self._last_snapshot, history_override)
 
         spot_quote = self.spot_quote()
         spot = safe_num(spot_quote.get("last_price"))
@@ -852,7 +877,7 @@ class KiteMarketService:
         }
 
         with self._lock:
-            history = list(history_override) if history_override is not None else list(self._history)
+            history = self._merged_history(history_override, snapshot)
             status = self.status()
             analysis = analyze_options_market(snapshot, history, self.weights, status, day_history=history)
             snapshot["levels"] = analysis.get("support_resistance")
@@ -865,6 +890,7 @@ class KiteMarketService:
             self._last_snapshot = result
             self._last_snapshot_at = time.time()
             result["status"] = self.status()
+            result["history_count"] = len(history)
         return result
 
     def _merge_quote_tick(self, quote, tick):

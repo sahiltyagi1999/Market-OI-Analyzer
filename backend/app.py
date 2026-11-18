@@ -348,11 +348,14 @@ def live_options_snapshot():
     force = request.args.get("refresh") in {"1", "true", "yes"}
     try:
         history = load_live_snapshot_history(username, "NIFTY")
+        db_history_count = len(history or [])
         payload = market_service.build_live_snapshot(expiry=expiry, force=force, history_override=history)
         if not payload.get("cached"):
             payload["storage"] = save_live_snapshot(username, payload)
         else:
             payload["storage"] = {"saved": False, "reason": "cached_snapshot"}
+        payload["storage"]["db_history_count"] = db_history_count
+        payload["storage"]["analysis_history_count"] = payload.get("history_count", db_history_count)
         payload["success"] = True
         return jsonify(payload)
     except KiteConfigError as exc:
