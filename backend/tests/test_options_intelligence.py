@@ -21,6 +21,24 @@ def snapshot(spot, rows, timestamp="2026-11-18T09:15:00+00:00"):
     }
 
 
+def focus_rows(call_ltp=100, put_ltp=100, call_oi=1000, put_oi=1000, volume=1000, extra=False):
+    strikes = [22400, 22450, 22500, 22550, 22600]
+    if extra:
+        strikes = [22350, *strikes, 22650]
+    rows = []
+    for strike in strikes:
+        rows.append({
+            "strike": strike,
+            "call_ltp": call_ltp,
+            "call_oi": call_oi,
+            "call_volume": volume,
+            "put_ltp": put_ltp,
+            "put_oi": put_oi,
+            "put_volume": volume,
+        })
+    return rows
+
+
 class OptionsIntelligenceTest(unittest.TestCase):
     def test_classifies_standard_positioning_types(self):
         self.assertEqual(classify_position(1.2, 100, 0.1, 1), "Long Build-up")
@@ -70,6 +88,33 @@ class OptionsIntelligenceTest(unittest.TestCase):
         atm = next(row for row in result["strikes"] if row["is_atm"])
         self.assertEqual(atm["call"]["positioning"], "Short Build-up")
         self.assertEqual(atm["put"]["positioning"], "Long Build-up")
+
+    def test_only_atm_plus_minus_two_strikes_drive_scoring(self):
+        prev = snapshot(22500, focus_rows(extra=True))
+        curr_rows = focus_rows(call_ltp=106, call_oi=1120, put_ltp=94, put_oi=1120, volume=1400, extra=True)
+        curr_rows[0].update({"call_ltp": 1, "call_oi": 100000, "put_ltp": 500, "put_oi": 100000})
+        curr_rows[-1].update({"call_ltp": 1, "call_oi": 100000, "put_ltp": 500, "put_oi": 100000})
+        curr = snapshot(22500, curr_rows, "2026-11-18T09:18:00+00:00")
+
+        result = analyze_options_market(curr, [prev])
+
+        self.assertEqual([row["strike"] for row in result["strikes"]], [22400, 22450, 22500, 22550, 22600])
+        self.assertEqual(result["live_bias"]["target_strikes"], [22400, 22450, 22500, 22550, 22600])
+        self.assertEqual(result["live_bias"]["direction"], "BULLISH")
+
+    def test_live_trend_conflict_becomes_mixed_overall(self):
+        s0 = snapshot(22500, focus_rows(), "2026-11-18T09:15:00+00:00")
+        s1 = snapshot(22510, focus_rows(call_ltp=105, call_oi=1100, put_ltp=95, put_oi=1100, volume=1200), "2026-11-18T09:18:00+00:00")
+        s2 = snapshot(22520, focus_rows(call_ltp=110, call_oi=1200, put_ltp=90, put_oi=1200, volume=1400), "2026-11-18T09:21:00+00:00")
+        s3 = snapshot(22530, focus_rows(call_ltp=115, call_oi=1300, put_ltp=85, put_oi=1300, volume=1600), "2026-11-18T09:24:00+00:00")
+        curr = snapshot(22505, focus_rows(call_ltp=107, call_oi=1460, put_ltp=93, put_oi=1460, volume=1800), "2026-11-18T09:27:00+00:00")
+
+        result = analyze_options_market(curr, [s0, s1, s2, s3])
+
+        self.assertEqual(result["live_bias"]["direction"], "BEARISH")
+        self.assertEqual(result["trend_bias"]["direction"], "BULLISH")
+        self.assertEqual(result["trend_bias"]["agreement_with_live"], "Conflicts")
+        self.assertEqual(result["direction"], "MIXED")
 
 
 if __name__ == "__main__":

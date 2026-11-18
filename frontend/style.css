@@ -1541,6 +1541,17 @@ code {
   color: var(--muted);
 }
 
+.market-intel-hero {
+  align-items: start;
+}
+
+.market-explain {
+  max-width: 920px;
+  margin-top: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .live-metrics .metric {
   min-height: 104px;
 }
@@ -1596,6 +1607,97 @@ code {
   opacity: 0.14;
 }
 
+.bias-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.bias-card {
+  display: grid;
+  gap: 14px;
+  border-top: 2px solid var(--gold);
+}
+
+.bias-card.bull {
+  border-top-color: var(--neon);
+}
+
+.bias-card.bear {
+  border-top-color: var(--red);
+}
+
+.bias-card-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.bias-card-head strong {
+  display: block;
+  margin-top: 4px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 1.35rem;
+}
+
+.bias-card-head > span {
+  min-width: 58px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--inset);
+  color: var(--gold);
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 800;
+  text-align: center;
+}
+
+.bias-detail-list {
+  display: grid;
+  gap: 8px;
+}
+
+.bias-detail-list div,
+.observation-list div {
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--inset);
+}
+
+.bias-detail-list div {
+  display: grid;
+  gap: 4px;
+}
+
+.bias-detail-list span {
+  color: var(--subtle);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.bias-detail-list strong,
+.observation-list div {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.observation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.market-split {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+}
+
+.compact-strength {
+  max-width: none;
+}
+
 .live-structure {
   gap: 8px;
 }
@@ -1640,7 +1742,62 @@ code {
 
 .live-strike-table th:not(:first-child),
 .live-strike-table td:not(:first-child) {
-  white-space: nowrap;
+  white-space: normal;
+}
+
+.compact-five th,
+.compact-five td {
+  vertical-align: top;
+}
+
+.compact-five .label-col strong {
+  font-family: "JetBrains Mono", monospace;
+  color: var(--white);
+}
+
+.strike-details {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.strike-details summary {
+  cursor: pointer;
+  color: var(--gold);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.calc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+  min-width: 420px;
+}
+
+.calc-grid span {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.calc-grid em,
+.calc-grid small {
+  color: var(--subtle);
+  font-style: normal;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.calc-grid strong {
+  color: var(--white);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.86rem;
 }
 
 .live-error {
@@ -1958,6 +2115,11 @@ code {
     grid-template-columns: 1fr;
   }
 
+  .bias-card-grid,
+  .market-split {
+    grid-template-columns: 1fr;
+  }
+
   .live-error-grid {
     grid-template-columns: 1fr;
   }
@@ -1994,6 +2156,11 @@ code {
 
   .metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .calc-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
   }
 }
 
@@ -2053,6 +2220,15 @@ code {
 
   .pcr-box {
     text-align: left;
+  }
+
+  .bias-card-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .calc-grid {
+    grid-template-columns: 1fr;
   }
 
   .help-strip,

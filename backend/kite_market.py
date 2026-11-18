@@ -139,6 +139,7 @@ class KiteTickerManager:
         self.reconnect_timer = None
         self.last_connected_at = None
         self.last_disconnected_at = None
+        self.last_tick_received_at = None
         self.auth_failure_callback = auth_failure_callback
         self.lock = threading.Lock()
 
@@ -159,6 +160,7 @@ class KiteTickerManager:
                 "subscribed_tokens": len(self.tokens),
                 "error": self.error,
                 "tick_count": len(self.ticks),
+                "last_tick_received_at": self.last_tick_received_at,
                 "reconnect_attempts": self.reconnect_attempts,
                 "last_connected_at": self.last_connected_at,
                 "last_disconnected_at": self.last_disconnected_at,
@@ -312,6 +314,7 @@ class KiteTickerManager:
 
     def _on_ticks(self, ws, ticks):
         received_at = time.time()
+        received_iso = iso_now()
         with self.lock:
             for tick in ticks:
                 token = tick.get("instrument_token")
@@ -320,6 +323,8 @@ class KiteTickerManager:
                 item = dict(tick)
                 item["_received_at"] = received_at
                 self.ticks[int(token)] = item
+            if ticks:
+                self.last_tick_received_at = received_iso
 
     def _is_auth_failure(self, code, reason):
         text = f"{code} {reason}".lower()
@@ -435,7 +440,7 @@ class KiteMarketService:
             "strikes_each_side": self.strikes_each_side,
             "instrument_cache_loaded": self._instruments is not None,
             "history_count": len(self._history),
-            "last_snapshot_at": self._last_snapshot.get("timestamp") if self._last_snapshot else None,
+            "last_snapshot_at": (self._last_snapshot.get("snapshot") or {}).get("timestamp") if self._last_snapshot else None,
             "websocket": websocket,
         }
 
@@ -792,6 +797,7 @@ class KiteMarketService:
                 "oi": safe_num(merged.get("oi")),
                 "volume": safe_num(merged.get("volume") or merged.get("volume_traded")),
                 "average_price": safe_num(merged.get("average_price") or merged.get("average_traded_price")),
+                "exchange_change_oi": merged.get("change_oi") or merged.get("oi_change") or merged.get("change_in_oi"),
                 "instrument_token": inst.get("instrument_token"),
                 "tradingsymbol": inst.get("tradingsymbol"),
                 "timestamp": self._quote_timestamp(merged),
@@ -807,6 +813,7 @@ class KiteMarketService:
                 "strike": int(strike),
                 "call_ltp": ce.get("ltp"),
                 "call_oi": ce.get("oi"),
+                "call_exchange_change_oi": ce.get("exchange_change_oi"),
                 "call_volume": ce.get("volume"),
                 "call_vwap": ce.get("average_price"),
                 "call_token": ce.get("instrument_token"),
@@ -814,6 +821,7 @@ class KiteMarketService:
                 "call_stale": ce.get("is_stale"),
                 "put_ltp": pe.get("ltp"),
                 "put_oi": pe.get("oi"),
+                "put_exchange_change_oi": pe.get("exchange_change_oi"),
                 "put_volume": pe.get("volume"),
                 "put_vwap": pe.get("average_price"),
                 "put_token": pe.get("instrument_token"),
@@ -844,16 +852,17 @@ class KiteMarketService:
 
         with self._lock:
             history = list(self._history)
-            analysis = analyze_options_market(snapshot, history, self.weights)
+            status = self.status()
+            analysis = analyze_options_market(snapshot, history, self.weights, status)
             snapshot["levels"] = analysis.get("support_resistance")
             result = {
                 "snapshot": snapshot,
                 "analysis": analysis,
-                "status": self.status(),
             }
             self._history.append(snapshot)
             self._last_snapshot = result
             self._last_snapshot_at = time.time()
+            result["status"] = self.status()
         return result
 
     def _merge_quote_tick(self, quote, tick):

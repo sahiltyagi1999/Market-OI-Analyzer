@@ -1309,17 +1309,19 @@ function renderLiveOptions(data) {
   const websocket = status.websocket || {};
   const kiteLabel = kiteStatusLabel(status);
   const kiteCls = kiteStatusClass(status);
+  const primaryExplanation = (analysis.explanations || [])[0] || "Signals are still building from aligned 3-minute snapshots.";
 
   document.getElementById("liveUpdated").classList.remove("hidden");
   document.getElementById("liveUpdatedAt").textContent = formatTime(analysis.timestamp || snapshot.timestamp);
 
   document.getElementById("liveBody").innerHTML = `
     <div class="live-grid">
-      <section class="signal-banner ${cls} live-signal">
+      <section class="signal-banner ${cls} live-signal market-intel-hero">
         <div>
-          <span>NIFTY Options Direction</span>
+          <span>Overall Market Direction</span>
           <strong>${escHtml(analysis.direction || "INSUFFICIENT DATA")}</strong>
-          <div class="live-subline">Confidence ${confidence}% · ${escHtml(snapshot.expiry || "-")} expiry · <span class="${kiteCls}">${escHtml(kiteLabel)}</span></div>
+          <div class="live-subline">Confidence ${confidence}% · ${escHtml(analysis.market_momentum || "Building")} · ${escHtml(snapshot.expiry || "-")} expiry</div>
+          <p class="market-explain">${escHtml(primaryExplanation)}</p>
         </div>
         <div class="pcr-box">
           <span>Spot</span>
@@ -1330,38 +1332,93 @@ function renderLiveOptions(data) {
       <div class="metrics live-metrics">
         ${liveMetric("Live Bias", live.direction, `${live.confidence || 0}%`, liveBiasClass(live.direction))}
         ${liveMetric("Trend Bias", trend.direction, `${trend.confidence || 0}%`, liveBiasClass(trend.direction))}
-        ${liveMetric("Bullish Score", analysis.bullish_score, "weighted", "bull")}
-        ${liveMetric("Bearish Score", analysis.bearish_score, "weighted", "bear")}
-        ${liveMetric("PCR", analysis.pcr ?? "-", "put/call OI", Number(analysis.pcr) >= 1 ? "bull" : "bear")}
-        ${liveMetric("Max Pain", analysis.max_pain ? Number(analysis.max_pain).toLocaleString("en-IN") : "-", "strike", "warn")}
+        ${liveMetric("Momentum", analysis.market_momentum || "-", "overall", liveBiasClass(analysis.direction))}
         ${liveMetric("Support", levels.support ? Number(levels.support).toLocaleString("en-IN") : "-", fmt(levels.support_oi), "bull")}
         ${liveMetric("Resistance", levels.resistance ? Number(levels.resistance).toLocaleString("en-IN") : "-", fmt(levels.resistance_oi), "bear")}
+        ${liveMetric("PCR", analysis.pcr ?? "-", "put/call OI", Number(analysis.pcr) >= 1 ? "bull" : "bear")}
+        ${liveMetric("Max Pain", analysis.max_pain ? Number(analysis.max_pain).toLocaleString("en-IN") : "-", "strike", "warn")}
+        ${liveMetric("Data Freshness", quality.status || "Unknown", quality.last_tick_received_at ? "tick seen" : "no tick", kiteDataQualityClass(quality))}
       </div>
 
-      <div class="split-grid">
-        <section class="panel">
-          <div class="panel-title">Signal Strength</div>
-          ${renderLiveStrength(analysis)}
-        </section>
-        <section class="panel">
-          <div class="panel-title">Market Structure</div>
-          ${renderLiveStructure(analysis, snapshot, status, websocket, quality)}
-        </section>
+      <div class="bias-card-grid">
+        ${renderBiasCard("LIVE BIAS - LAST 3 MINUTES", live, [
+          ["Spot Movement", signedPrice(live.spot_change)],
+          ["Call Activity", live.call_activity || "Neutral"],
+          ["Put Activity", live.put_activity || "Neutral"],
+          ["Strongest Strike", live.strongest_contributor || "-"],
+          ["What Changed", live.what_changed || "-"],
+        ])}
+        ${renderBiasCard("TREND BIAS - LAST 15 MINUTES", trend, [
+          ["Trend Consistency", trend.trend_consistency || "-"],
+          ["Momentum", trend.momentum || "-"],
+          ["Dominant Positioning", trend.dominant_positioning || "-"],
+          ["Live vs Trend", trend.agreement_with_live || "-"],
+          ["Interpretation", trend.explanations?.[0] || "Need five aligned snapshots for full trend context."],
+        ])}
       </div>
 
       <section class="panel">
-        <div class="panel-title">Why This Direction</div>
-        <div class="live-explain-list">
-          ${(analysis.explanations || []).map((item) => `<div class="live-explain">${escHtml(item)}</div>`).join("") || '<div class="empty-state">No explanation available yet.</div>'}
-        </div>
+        <div class="panel-title">What Is Happening Right Now?</div>
+        ${renderObservationList(analysis.observations || analysis.explanations || [])}
         ${(analysis.conflicts || []).length ? `<div class="conflict-list">${analysis.conflicts.map((item) => `<span>${escHtml(item)}</span>`).join("")}</div>` : ""}
       </section>
 
-      <section class="panel">
-        <div class="panel-title">Strike-Level Intelligence</div>
-        ${renderLiveStrikeTable(analysis.strikes || [])}
+      <div class="split-grid market-split">
+        <section class="panel">
+          <div class="panel-title">Five-Strike Intelligence</div>
+          ${renderLiveStrikeTable(analysis.strikes || [])}
+        </section>
+        <section class="panel">
+          <div class="panel-title">Connection & Data Quality</div>
+          ${renderLiveStructure(analysis, snapshot, status, websocket, quality, kiteLabel, kiteCls)}
+        </section>
+      </div>
+
+      <section class="panel compact-strength">
+        <div class="panel-title">Normalized Signal Strength</div>
+        ${renderLiveStrength(analysis)}
       </section>
     </div>`;
+}
+
+function renderBiasCard(title, bias, rows) {
+  const cls = liveBiasClass(bias?.direction);
+  return `
+    <section class="panel bias-card ${cls}">
+      <div class="bias-card-head">
+        <div>
+          <div class="section-label">${escHtml(title)}</div>
+          <strong class="${cls}">${escHtml(bias?.direction || "INSUFFICIENT DATA")}</strong>
+        </div>
+        <span>${Number(bias?.confidence || 0)}%</span>
+      </div>
+      <div class="bias-detail-list">
+        ${rows.map(([label, value]) => `
+          <div>
+            <span>${escHtml(label)}</span>
+            <strong>${escHtml(value ?? "-")}</strong>
+          </div>`).join("")}
+      </div>
+    </section>`;
+}
+
+function renderObservationList(items) {
+  const shown = (items || []).filter(Boolean).slice(0, 5);
+  if (!shown.length) return '<div class="empty-state">No important observation available yet.</div>';
+  return `<div class="observation-list">${shown.map((item) => `<div>${escHtml(item)}</div>`).join("")}</div>`;
+}
+
+function kiteDataQualityClass(quality = {}) {
+  const status = String(quality.status || "").toLowerCase();
+  if (status === "fresh") return "bull";
+  if (status === "stale") return "warn";
+  return "bear";
+}
+
+function signedPrice(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "-";
+  return `${num > 0 ? "+" : ""}${num.toFixed(2)}`;
 }
 
 function liveMetric(label, value, sub, cls) {
@@ -1390,23 +1447,26 @@ function renderLiveStrength(analysis) {
     </div>`;
 }
 
-function renderLiveStructure(analysis, snapshot, status, websocket, quality) {
+function renderLiveStructure(analysis, snapshot, status, websocket, quality, kiteLabel, kiteCls) {
   const ivText = analysis.atm_iv ? `${analysis.atm_iv}%` : "Unavailable";
   const ivPct = analysis.iv_percentile ? `${analysis.iv_percentile}%` : "Unavailable";
+  const wsText = websocket.connected ? "Connected" : (websocket.enabled ? (websocket.state || "Disconnected") : "REST only");
+  const wsCls = websocket.connected ? "bull" : websocket.enabled ? "bear" : "warn";
   return `
     <div class="level-list live-structure">
-      ${liveLevel("ATM Strike", analysis.atm ? Number(analysis.atm).toLocaleString("en-IN") : "-", "blue")}
-      ${liveLevel("Total Call OI", fmt(analysis.total_call_oi), "bear")}
-      ${liveLevel("Total Put OI", fmt(analysis.total_put_oi), "bull")}
-      ${liveLevel("ATM IV", ivText, analysis.atm_iv ? "warn" : "")}
-      ${liveLevel("IV Percentile", ivPct, analysis.iv_percentile ? "warn" : "")}
-      ${liveLevel("VWAP", analysis.vwap ? fmtPrice(analysis.vwap) : "Unavailable", analysis.vwap ? "blue" : "")}
-      ${liveLevel("Kite", kiteStatusLabel(status), kiteStatusClass(status))}
-      ${liveLevel("WebSocket", websocket.connected ? "Connected" : (websocket.enabled ? (websocket.state || "Reconnecting") : "REST only"), websocket.connected ? "bull" : "warn")}
+      ${liveLevel("Kite Authentication", kiteLabel || kiteStatusLabel(status), kiteCls || kiteStatusClass(status))}
+      ${liveLevel("WebSocket", wsText, wsCls)}
       ${liveLevel("Market", status.marketState || "Unknown", status.marketState === "OPEN" ? "bull" : "warn")}
-      ${liveLevel("Data Quality", quality.status || "unknown", quality.status === "ok" ? "bull" : "warn")}
+      ${liveLevel("Last Tick", quality.last_tick_received_at ? formatTime(quality.last_tick_received_at) : "Unavailable", quality.last_tick_received_at ? "bull" : "warn")}
+      ${liveLevel("Last Snapshot", quality.last_successful_snapshot_at ? formatTime(quality.last_successful_snapshot_at) : "Unavailable", quality.last_successful_snapshot_at ? "bull" : "warn")}
+      ${liveLevel("Data Freshness", quality.status || "Unknown", kiteDataQualityClass(quality))}
+      ${liveLevel("ATM Strike", analysis.atm ? Number(analysis.atm).toLocaleString("en-IN") : "-", "blue")}
+      ${liveLevel("VWAP", analysis.vwap ? fmtPrice(analysis.vwap) : "Unavailable", analysis.vwap ? "blue" : "warn")}
+      ${liveLevel("ATM IV", ivText, "warn")}
+      ${liveLevel("IV Percentile", ivPct, "warn")}
     </div>
-    <div class="chart-note">${escHtml(analysis.iv_note || snapshot.iv_note || "")}</div>`;
+    <div class="chart-note">${escHtml(analysis.iv_note || snapshot.iv_note || "VWAP/IV are shown only when Kite or a model supplies them.")}</div>
+    ${websocket?.error ? `<div class="risk-box">WebSocket: ${escHtml(websocket.error)}</div>` : ""}`;
 }
 
 function liveLevel(name, value, cls) {
@@ -1418,35 +1478,59 @@ function liveLevel(name, value, cls) {
 }
 
 function renderLiveStrikeTable(rows) {
-  if (!rows.length) return '<div class="empty-state">No strike rows available.</div>';
+  if (!rows.length) return '<div class="empty-state">No five-strike rows available.</div>';
   return `
     <div class="trade-table-wrap">
-      <table class="trade-table live-strike-table">
+      <table class="trade-table live-strike-table compact-five">
         <thead>
           <tr>
-            <th>Strike</th><th>CE Position</th><th>CE OI Chg</th><th>CE LTP</th>
-            <th>PE LTP</th><th>PE OI Chg</th><th>PE Position</th><th>Net</th>
+            <th>Strike</th><th>Call Activity</th><th>Put Activity</th><th>Net Interpretation</th>
           </tr>
         </thead>
         <tbody>
           ${rows.map((row) => `
             <tr class="${row.is_atm ? "near-row" : ""}">
-              <td class="label-col">${Number(row.strike).toLocaleString("en-IN")}${row.is_atm ? ' <em class="tag atm">ATM</em>' : ""}</td>
+              <td class="label-col">${escHtml(row.label || "")}<br><strong>${Number(row.strike).toLocaleString("en-IN")}</strong></td>
               <td class="${liveBiasClass(row.call?.bias)}">${escHtml(row.call?.positioning || "-")}</td>
-              <td class="num ${Number(row.call?.change_oi) >= 0 ? "bear" : "bull"}">${signedFmt(row.call?.change_oi)}</td>
-              <td class="num">${fmtPrice(row.call?.ltp)}</td>
-              <td class="num">${fmtPrice(row.put?.ltp)}</td>
-              <td class="num ${Number(row.put?.change_oi) >= 0 ? "bull" : "bear"}">${signedFmt(row.put?.change_oi)}</td>
               <td class="${liveBiasClass(row.put?.bias)}">${escHtml(row.put?.positioning || "-")}</td>
-              <td class="num ${liveScoreClass(row.net_score)}">${signedFmt(row.net_score)}</td>
+              <td class="${liveBiasClass(row.net_interpretation)}">
+                <strong>${escHtml(row.net_interpretation || "-")}</strong>
+                <details class="strike-details">
+                  <summary>Calculations</summary>
+                  ${renderStrikeCalculations(row)}
+                </details>
+              </td>
             </tr>`).join("")}
         </tbody>
       </table>
     </div>`;
 }
 
+function renderStrikeCalculations(row) {
+  return `
+    <div class="calc-grid">
+      ${calcBox("Call OI", fmt(row.call?.oi), "Current")}
+      ${calcBox("Call 3m OI", signedFmt(row.call?.interval_oi_change), pctFmt(row.call?.interval_oi_change_pct))}
+      ${calcBox("Call 3m Premium", signedPrice(row.call?.interval_premium_change), pctFmt(row.call?.interval_premium_change_pct))}
+      ${calcBox("Put OI", fmt(row.put?.oi), "Current")}
+      ${calcBox("Put 3m OI", signedFmt(row.put?.interval_oi_change), pctFmt(row.put?.interval_oi_change_pct))}
+      ${calcBox("Put 3m Premium", signedPrice(row.put?.interval_premium_change), pctFmt(row.put?.interval_premium_change_pct))}
+    </div>`;
+}
+
+function calcBox(label, value, sub) {
+  return `<span><em>${escHtml(label)}</em><strong>${escHtml(value ?? "-")}</strong><small>${escHtml(sub || "")}</small></span>`;
+}
+
+function pctFmt(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "-";
+  return `${num > 0 ? "+" : ""}${num.toFixed(2)}%`;
+}
+
 function signedFmt(value) {
-  const num = Number(value) || 0;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "-";
   const sign = num > 0 ? "+" : "";
   return `${sign}${fmt(num)}`;
 }
