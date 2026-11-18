@@ -118,6 +118,31 @@ class OptionsIntelligenceTest(unittest.TestCase):
         self.assertEqual(result["day_trend"]["direction"], "BULLISH")
         self.assertEqual(result["day_trend"]["interval_count"], 4)
 
+    def test_change_windows_include_five_minute_and_session_numbers(self):
+        s0 = snapshot(22500, focus_rows(), "2026-11-18T09:15:00+00:00")
+        s1 = snapshot(22515, focus_rows(call_ltp=104, call_oi=1100, put_ltp=96, put_oi=1080, volume=1200), "2026-11-18T09:18:00+00:00")
+        curr = snapshot(22530, focus_rows(call_ltp=110, call_oi=1250, put_ltp=90, put_oi=1200, volume=1500), "2026-11-18T09:21:00+00:00")
+
+        result = analyze_options_market(curr, [s0, s1], day_history=[s0, s1])
+
+        windows = result["change_windows"]
+        self.assertTrue(windows["3m"]["available"])
+        self.assertTrue(windows["5m"]["available"])
+        self.assertTrue(windows["session"]["available"])
+        self.assertEqual(windows["5m"]["baseline_timestamp"], s0["timestamp"])
+        self.assertGreater(windows["session"]["change"]["call_oi_change_pct"], 0)
+        self.assertEqual(len(windows["15m"]["rows"]), 5)
+
+    def test_current_bucket_in_history_is_not_used_as_previous_snapshot(self):
+        s0 = snapshot(22500, focus_rows(), "2026-11-18T09:15:00+00:00")
+        curr = snapshot(22530, focus_rows(call_ltp=110, call_oi=1250, put_ltp=90, put_oi=1200, volume=1500), "2026-11-18T09:18:00+00:00")
+
+        result = analyze_options_market(curr, [s0, curr], day_history=[s0, curr])
+
+        self.assertTrue(result["change_windows"]["3m"]["available"])
+        self.assertEqual(result["change_windows"]["3m"]["baseline_timestamp"], s0["timestamp"])
+        self.assertGreater(result["change_windows"]["3m"]["change"]["call_oi_change"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

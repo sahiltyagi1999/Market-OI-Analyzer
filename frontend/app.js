@@ -19,8 +19,11 @@ let liveLoading = false;
 let liveLoaded = false;
 let liveAutoRefresh = true;
 let liveTimer = null;
+let liveWindowKey = localStorage.getItem("oi_live_window_key") || "3m";
+let brightMode = localStorage.getItem("oi_bright_mode") === "1";
 
 const LIVE_REFRESH_MS = 30000;
+document.documentElement.classList.toggle("bright-mode", brightMode);
 
 const CONFIG = window.OI_ANALYZER_CONFIG || {};
 const STRIKE_RANGE = {
@@ -31,6 +34,7 @@ const STRIKE_RANGE = {
 document.addEventListener("DOMContentLoaded", async () => {
   frontendEnv = await loadFrontendEnv();
   initClock();
+  applyThemeMode();
   bindLogin();
   bindUpload();
   bindActions();
@@ -144,6 +148,11 @@ function getLoginErrorMessage(error) {
 
 function bindActions() {
   document.getElementById("logoutBtn").addEventListener("click", logout);
+  document.getElementById("themeToggleBtn")?.addEventListener("click", () => {
+    brightMode = !brightMode;
+    localStorage.setItem("oi_bright_mode", brightMode ? "1" : "0");
+    applyThemeMode();
+  });
   document.querySelectorAll(".nav-btn").forEach((btn) => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
   });
@@ -178,6 +187,23 @@ function bindActions() {
     input.value = "";
     input.click();
   });
+}
+
+function applyThemeMode() {
+  document.documentElement.classList.toggle("bright-mode", brightMode);
+  const btn = document.getElementById("themeToggleBtn");
+  if (btn) {
+    btn.textContent = brightMode ? "Dark" : "Bright";
+    btn.title = brightMode ? "Switch to dark mode" : "Switch to bright mode";
+  }
+}
+
+function setLiveWindow(key) {
+  liveWindowKey = key;
+  localStorage.setItem("oi_live_window_key", key);
+  if (window.lastLiveOptionsData) {
+    renderLiveOptions(window.lastLiveOptionsData);
+  }
 }
 
 function openKiteLogin() {
@@ -1199,6 +1225,7 @@ async function loadLiveOptions(forceRefresh = false) {
       throw Object.assign(new Error(data.message || data.error || "Could not load live options."), { data });
     }
     liveLoaded = true;
+    window.lastLiveOptionsData = data;
     sourceState.textContent = kiteStatusLabel(data.status);
     sourceState.className = kiteStatusClass(data.status);
     renderLiveOptions(data);
@@ -1311,6 +1338,9 @@ function renderLiveOptions(data) {
   const kiteLabel = kiteStatusLabel(status);
   const kiteCls = kiteStatusClass(status);
   const primaryExplanation = (analysis.explanations || [])[0] || "Signals are still building from aligned 3-minute snapshots.";
+  const changeWindows = analysis.change_windows || {};
+  if (!changeWindows[liveWindowKey]) liveWindowKey = "3m";
+  const selectedWindow = changeWindows[liveWindowKey] || changeWindows["3m"] || {};
 
   document.getElementById("liveUpdated").classList.remove("hidden");
   document.getElementById("liveUpdatedAt").textContent = formatTime(analysis.timestamp || snapshot.timestamp);
@@ -1342,28 +1372,33 @@ function renderLiveOptions(data) {
       </div>
 
       <div class="bias-card-grid">
-        ${renderBiasCard("LIVE BIAS - LAST 3 MINUTES", live, [
-          ["Spot Movement", signedPrice(live.spot_change)],
-          ["Call Activity", live.call_activity || "Neutral"],
-          ["Put Activity", live.put_activity || "Neutral"],
-          ["Strongest Strike", live.strongest_contributor || "-"],
-          ["What Changed", live.what_changed || "-"],
-        ])}
-        ${renderBiasCard("TREND BIAS - LAST 15 MINUTES", trend, [
-          ["Trend Consistency", trend.trend_consistency || "-"],
-          ["Momentum", trend.momentum || "-"],
-          ["Dominant Positioning", trend.dominant_positioning || "-"],
-          ["Live vs Trend", trend.agreement_with_live || "-"],
-          ["Interpretation", trend.explanations?.[0] || "Need five aligned snapshots for full trend context."],
-        ])}
-        ${renderBiasCard("DAY TRACK - MARKET OPEN TO NOW", day, [
-          ["Control", day.buyers_vs_sellers || "Pending"],
-          ["Session Consistency", day.trend_consistency || "-"],
-          ["Session Momentum", day.momentum || "-"],
-          ["Spot Since First Snapshot", signedPrice(day.spot_change)],
-          ["Saved Intervals", day.interval_count ?? 0],
-        ])}
+        ${renderBiasCard("LIVE BIAS - LAST 3 MINUTES", live, changeWindows["3m"])}
+        ${renderBiasCard("TREND BIAS - LAST 15 MINUTES", trend, changeWindows["15m"])}
+        ${renderBiasCard("DAY TRACK - MARKET OPEN TO NOW", day, changeWindows.session)}
       </div>
+
+      <section class="panel">
+        <div class="panel-title-row">
+          <div>
+            <div class="panel-title">Five-Strike Number Table</div>
+            <div class="window-subtitle">${escHtml(selectedWindow.label || "Last Snapshot")} · ${windowElapsed(selectedWindow)}</div>
+          </div>
+          ${renderLiveWindowSelector(changeWindows)}
+        </div>
+        ${renderWindowSummary(selectedWindow)}
+        ${renderLiveStrikeTable(selectedWindow.rows?.length ? selectedWindow.rows : analysis.strikes || [], selectedWindow)}
+      </section>
+
+      <section class="panel">
+        <div class="panel-title-row">
+          <div>
+            <div class="panel-title">15-Minute Trend Table</div>
+            <div class="window-subtitle">${windowElapsed(changeWindows["15m"] || {})}</div>
+          </div>
+        </div>
+        ${renderWindowSummary(changeWindows["15m"] || {})}
+        ${renderLiveStrikeTable(changeWindows["15m"]?.rows || [], changeWindows["15m"] || {})}
+      </section>
 
       <section class="panel">
         <div class="panel-title">What Is Happening Right Now?</div>
@@ -1373,12 +1408,12 @@ function renderLiveOptions(data) {
 
       <div class="split-grid market-split">
         <section class="panel">
-          <div class="panel-title">Five-Strike Intelligence</div>
-          ${renderLiveStrikeTable(analysis.strikes || [])}
-        </section>
-        <section class="panel">
           <div class="panel-title">Connection & Data Quality</div>
           ${renderLiveStructure(analysis, snapshot, status, websocket, quality, kiteLabel, kiteCls)}
+        </section>
+        <section class="panel">
+          <div class="panel-title">Positioning Notes</div>
+          ${renderPositioningNotes(live, trend, day)}
         </section>
       </div>
 
@@ -1389,8 +1424,9 @@ function renderLiveOptions(data) {
     </div>`;
 }
 
-function renderBiasCard(title, bias, rows) {
+function renderBiasCard(title, bias, windowData = {}) {
   const cls = liveBiasClass(bias?.direction);
+  const change = bias?.change || windowData?.change || {};
   return `
     <section class="panel bias-card ${cls}">
       <div class="bias-card-head">
@@ -1400,14 +1436,29 @@ function renderBiasCard(title, bias, rows) {
         </div>
         <span>${Number(bias?.confidence || 0)}%</span>
       </div>
-      <div class="bias-detail-list">
-        ${rows.map(([label, value]) => `
-          <div>
-            <span>${escHtml(label)}</span>
-            <strong>${escHtml(value ?? "-")}</strong>
-          </div>`).join("")}
-      </div>
+      ${renderBiasChangeGrid(change, windowData)}
     </section>`;
+}
+
+function renderBiasChangeGrid(change = {}, windowData = {}) {
+  if (!windowData?.available && !Object.keys(change || {}).length) {
+    return `<div class="window-empty">${escHtml(windowData?.reason || "Need more saved snapshots.")}</div>`;
+  }
+  const items = [
+    ["Spot", change.spot_change, change.spot_change_pct, "pts"],
+    ["Call OI", change.call_oi_change, change.call_oi_change_pct, ""],
+    ["Put OI", change.put_oi_change, change.put_oi_change_pct, ""],
+    ["Net OI", change.net_oi_change, change.net_oi_change_pct, ""],
+  ];
+  return `
+    <div class="bias-change-grid">
+      ${items.map(([label, value, pct, unit]) => `
+        <div class="${changeClass(value)}">
+          <span>${escHtml(label)}</span>
+          <strong>${pctFmt(pct)}</strong>
+          <small>${signedFmt(value)}${unit ? ` ${unit}` : ""}</small>
+        </div>`).join("")}
+    </div>`;
 }
 
 function renderObservationList(items) {
@@ -1424,6 +1475,7 @@ function kiteDataQualityClass(quality = {}) {
 }
 
 function signedPrice(value) {
+  if (value === null || value === undefined || value === "") return "-";
   const num = Number(value);
   if (!Number.isFinite(num)) return "-";
   return `${num > 0 ? "+" : ""}${num.toFixed(2)}`;
@@ -1485,33 +1537,110 @@ function liveLevel(name, value, cls) {
     </div>`;
 }
 
-function renderLiveStrikeTable(rows) {
+function renderLiveWindowSelector(windows = {}) {
+  const options = [
+    ["3m", "3 Min"],
+    ["5m", "5 Min"],
+    ["15m", "15 Min"],
+    ["session", "Session"],
+  ];
+  return `
+    <div class="window-selector">
+      ${options.map(([key, label]) => {
+        const item = windows[key] || {};
+        return `<button class="window-btn ${liveWindowKey === key ? "active" : ""} ${item.available ? "" : "unavailable"}" type="button" onclick="setLiveWindow('${key}')">${label}</button>`;
+      }).join("")}
+    </div>`;
+}
+
+function renderWindowSummary(windowData = {}) {
+  if (!windowData.available) {
+    return `<div class="empty-state warn compact-window-empty">${escHtml(windowData.reason || "Need more saved snapshots for this window.")}</div>`;
+  }
+  const c = windowData.change || {};
+  const items = [
+    ["Spot", c.spot_change, c.spot_change_pct, "pts"],
+    ["Call OI", c.call_oi_change, c.call_oi_change_pct, ""],
+    ["Put OI", c.put_oi_change, c.put_oi_change_pct, ""],
+    ["Call Prem", c.call_premium_change, c.call_premium_change_pct, ""],
+    ["Put Prem", c.put_premium_change, c.put_premium_change_pct, ""],
+    ["Net OI", c.net_oi_change, c.net_oi_change_pct, ""],
+  ];
+  return `
+    <div class="window-summary-grid">
+      ${items.map(([label, value, pct, unit]) => `
+        <div class="window-stat ${changeClass(value)}">
+          <span>${escHtml(label)}</span>
+          <strong>${pctFmt(pct)}</strong>
+          <small>${signedFmt(value)}${unit ? ` ${unit}` : ""}</small>
+        </div>`).join("")}
+    </div>`;
+}
+
+function windowElapsed(windowData = {}) {
+  if (!windowData.available) return windowData.reason || "waiting for saved snapshots";
+  const mins = Number(windowData.elapsed_minutes);
+  const label = Number.isFinite(mins) && mins > 0 ? `${mins.toFixed(mins >= 10 ? 0 : 1)} min change` : "latest change";
+  const base = windowData.baseline_timestamp ? `from ${formatTime(windowData.baseline_timestamp)}` : "";
+  return [label, base].filter(Boolean).join(" · ");
+}
+
+function renderPositioningNotes(live = {}, trend = {}, day = {}) {
+  const notes = [
+    ["Live Call Activity", live.call_activity || "Neutral"],
+    ["Live Put Activity", live.put_activity || "Neutral"],
+    ["Strongest Strike", live.strongest_contributor || "-"],
+    ["15m Consistency", trend.trend_consistency || "-"],
+    ["Session Control", day.buyers_vs_sellers || "Pending"],
+    ["Session Intervals", day.interval_count ?? 0],
+  ];
+  return `<div class="bias-detail-list">${notes.map(([label, value]) => `
+    <div><span>${escHtml(label)}</span><strong>${escHtml(value)}</strong></div>`).join("")}</div>`;
+}
+
+function renderLiveStrikeTable(rows, windowData = {}) {
   if (!rows.length) return '<div class="empty-state">No five-strike rows available.</div>';
   return `
+    ${!windowData.available ? `<div class="table-note warn">${escHtml(windowData.reason || "No saved comparison snapshot for this window; showing current strike values.")}</div>` : ""}
     <div class="trade-table-wrap">
-      <table class="trade-table live-strike-table compact-five">
+      <table class="trade-table live-strike-table strike-number-table">
         <thead>
           <tr>
-            <th>Strike</th><th>Call Activity</th><th>Put Activity</th><th>Net Interpretation</th>
+            <th>Strike</th>
+            <th>Call LTP</th>
+            <th>Call OI</th>
+            <th>Call Activity</th>
+            <th>Put LTP</th>
+            <th>Put OI</th>
+            <th>Put Activity</th>
+            <th>Net</th>
           </tr>
         </thead>
         <tbody>
           ${rows.map((row) => `
             <tr class="${row.is_atm ? "near-row" : ""}">
               <td class="label-col">${escHtml(row.label || "")}<br><strong>${Number(row.strike).toLocaleString("en-IN")}</strong></td>
-              <td class="${liveBiasClass(row.call?.bias)}">${escHtml(row.call?.positioning || "-")}</td>
-              <td class="${liveBiasClass(row.put?.bias)}">${escHtml(row.put?.positioning || "-")}</td>
-              <td class="${liveBiasClass(row.net_interpretation)}">
-                <strong>${escHtml(row.net_interpretation || "-")}</strong>
-                <details class="strike-details">
-                  <summary>Calculations</summary>
-                  ${renderStrikeCalculations(row)}
-                </details>
-              </td>
+              <td class="num">${fmtPrice(row.call?.ltp)}</td>
+              <td>${renderChangeCell(row.call?.interval_oi_change, row.call?.interval_oi_change_pct)}</td>
+              <td class="${liveBiasClass(row.call?.bias)}">${escHtml(row.call?.positioning || "-")}<small>${renderChangeText(row.call?.interval_premium_change, row.call?.interval_premium_change_pct)}</small></td>
+              <td class="num">${fmtPrice(row.put?.ltp)}</td>
+              <td>${renderChangeCell(row.put?.interval_oi_change, row.put?.interval_oi_change_pct)}</td>
+              <td class="${liveBiasClass(row.put?.bias)}">${escHtml(row.put?.positioning || "-")}<small>${renderChangeText(row.put?.interval_premium_change, row.put?.interval_premium_change_pct)}</small></td>
+              <td class="${liveBiasClass(row.net_interpretation)}"><strong>${escHtml(row.net_interpretation || "-")}</strong><small>Score ${signedPrice(row.net_score)}</small></td>
             </tr>`).join("")}
         </tbody>
       </table>
     </div>`;
+}
+
+function renderChangeCell(value, pct) {
+  const cls = changeClass(value);
+  return `<div class="change-cell ${cls}"><strong>${signedFmt(value)}</strong><span>${pctFmt(pct)}</span></div>`;
+}
+
+function renderChangeText(value, pct) {
+  const cls = changeClass(value);
+  return `<span class="mini-change ${cls}">${signedPrice(value)} / ${pctFmt(pct)}</span>`;
 }
 
 function renderStrikeCalculations(row) {
@@ -1531,16 +1660,24 @@ function calcBox(label, value, sub) {
 }
 
 function pctFmt(value) {
+  if (value === null || value === undefined || value === "") return "-";
   const num = Number(value);
   if (!Number.isFinite(num)) return "-";
   return `${num > 0 ? "+" : ""}${num.toFixed(2)}%`;
 }
 
 function signedFmt(value) {
+  if (value === null || value === undefined || value === "") return "-";
   const num = Number(value);
   if (!Number.isFinite(num)) return "-";
-  const sign = num > 0 ? "+" : "";
-  return `${sign}${fmt(num)}`;
+  const sign = num > 0 ? "+" : num < 0 ? "-" : "";
+  return `${sign}${fmt(Math.abs(num))}`;
+}
+
+function changeClass(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num === 0) return "neut";
+  return num > 0 ? "bull" : "bear";
 }
 
 /* ---------- News sentiment ---------- */

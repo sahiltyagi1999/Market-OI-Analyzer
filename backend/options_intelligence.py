@@ -4,7 +4,7 @@ import math
 from collections import Counter, defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 DIRECTION_VALUES = {"BULLISH", "BEARISH", "SIDEWAYS", "MIXED", "INSUFFICIENT DATA", "NEUTRAL"}
@@ -91,6 +91,52 @@ def percent_change(current, previous):
     if previous <= 0:
         return 0.0
     return ((current - previous) / previous) * 100
+
+
+def parse_timestamp(value):
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def snapshot_time(snapshot):
+    return parse_timestamp((snapshot or {}).get("timestamp"))
+
+
+def seconds_between(current, previous):
+    current_time = snapshot_time(current)
+    previous_time = snapshot_time(previous)
+    if not current_time or not previous_time:
+        return None
+    return max(0, int((current_time - previous_time).total_seconds()))
+
+
+def normalize_history(snapshots, current_snapshot=None):
+    current_time = snapshot_time(current_snapshot)
+    keyed = {}
+    fallback = []
+    for item in snapshots or []:
+        if not item:
+            continue
+        item_time = snapshot_time(item)
+        if current_time and item_time and item_time >= current_time:
+            continue
+        if item_time:
+            keyed[item_time.isoformat()] = item
+        else:
+            fallback.append(item)
+    ordered = [keyed[key] for key in sorted(keyed)]
+    return fallback + ordered
 
 
 def movement_sign(value, abs_threshold=0.0):
@@ -356,6 +402,110 @@ def interval_summary(interval, current_snapshot, previous_snapshot):
         "put_activity": summarize_activity(rows, "put"),
         "strongest_contributor": strongest_text,
         "what_changed": changed,
+    }
+
+
+def focus_totals(snapshot):
+    rows, _, _, _ = select_focus_rows(snapshot or {})
+    call_oi = sum(safe_num(row.get("call_oi")) for row in rows)
+    put_oi = sum(safe_num(row.get("put_oi")) for row in rows)
+    call_premium = sum(safe_num(row.get("call_ltp")) for row in rows)
+    put_premium = sum(safe_num(row.get("put_ltp")) for row in rows)
+    call_volume = sum(safe_num(row.get("call_volume")) for row in rows)
+    put_volume = sum(safe_num(row.get("put_volume")) for row in rows)
+    return {
+        "spot": safe_num((snapshot or {}).get("spot")),
+        "call_oi": call_oi,
+        "put_oi": put_oi,
+        "net_oi": put_oi - call_oi,
+        "call_premium": call_premium,
+        "put_premium": put_premium,
+        "net_premium": call_premium - put_premium,
+        "call_volume": call_volume,
+        "put_volume": put_volume,
+    }
+
+
+def summarize_change(current_snapshot, previous_snapshot):
+    current = focus_totals(current_snapshot)
+    previous = focus_totals(previous_snapshot)
+    fields = ("spot", "call_oi", "put_oi", "net_oi", "call_premium", "put_premium", "net_premium", "call_volume", "put_volume")
+    summary = {}
+    for field in fields:
+        current_value = current[field]
+        previous_value = previous[field]
+        summary[field] = round2(current_value)
+        summary[f"{field}_change"] = round2(current_value - previous_value)
+        summary[f"{field}_change_pct"] = round2(percent_change(current_value, previous_value))
+    return summary
+
+
+def empty_window(key, label, reason):
+    return {
+        "key": key,
+        "label": label,
+        "available": False,
+        "reason": reason,
+        "direction": "INSUFFICIENT DATA",
+        "confidence": 0,
+        "bullish_score": 0,
+        "bearish_score": 0,
+        "rows": [],
+        "change": {},
+    }
+
+
+def window_payload(key, label, current_snapshot, previous_snapshot, weights):
+    if not previous_snapshot:
+        return empty_window(key, label, "Need an older saved snapshot for this window.")
+    interval = build_interval_analysis(current_snapshot, previous_snapshot, weights)
+    elapsed = seconds_between(current_snapshot, previous_snapshot)
+    return {
+        "key": key,
+        "label": label,
+        "available": True,
+        "direction": interval.get("direction"),
+        "confidence": interval.get("confidence", 0),
+        "bullish_score": interval.get("bullish_score", 0),
+        "bearish_score": interval.get("bearish_score", 0),
+        "observations": interval.get("observations", 0),
+        "baseline_timestamp": previous_snapshot.get("timestamp"),
+        "current_timestamp": current_snapshot.get("timestamp"),
+        "elapsed_seconds": elapsed,
+        "elapsed_minutes": round2(elapsed / 60) if elapsed is not None else None,
+        "change": summarize_change(current_snapshot, previous_snapshot),
+        "rows": interval.get("rows") or [],
+        "missing_strikes": interval.get("missing_strikes") or [],
+    }
+
+
+def baseline_at_or_before(snapshots, current_snapshot, minutes):
+    current_time = snapshot_time(current_snapshot)
+    if not current_time:
+        return None
+    target_time = current_time - timedelta(minutes=minutes)
+    candidates = [
+        item for item in snapshots
+        if item is not current_snapshot and snapshot_time(item) and snapshot_time(item) <= target_time
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: snapshot_time(item))
+
+
+def build_change_windows(current_snapshot, history, day_snapshots, weights):
+    history = list(history or [])
+    day_snapshots = list(day_snapshots or [])
+    previous = history[-1] if history else None
+    trend_baseline = (history + [current_snapshot])[-5:][0] if history else None
+    session_candidates = [item for item in day_snapshots if item is not current_snapshot]
+    session_baseline = session_candidates[0] if session_candidates else None
+    five_min_baseline = baseline_at_or_before(day_snapshots, current_snapshot, 5)
+    return {
+        "3m": window_payload("3m", "Last Snapshot", current_snapshot, previous, weights),
+        "5m": window_payload("5m", "Last 5 Minutes", current_snapshot, five_min_baseline, weights),
+        "15m": window_payload("15m", "Last 15 Minutes", current_snapshot, trend_baseline, weights),
+        "session": window_payload("session", "Session Start", current_snapshot, session_baseline, weights),
     }
 
 
@@ -710,10 +860,11 @@ def observations(live, trend, overall, levels, events):
 
 def analyze_options_market(current_snapshot, history=None, config=None, status=None, day_history=None):
     weights = merge_weights(config)
-    history = list(history or [])
-    previous = history[-1] if history else None
     rows = current_snapshot.get("rows") or []
     timestamp = current_snapshot.get("timestamp") or iso_now()
+    history = normalize_history(history or [], current_snapshot)
+    day_base = normalize_history(day_history if day_history is not None else history, current_snapshot)
+    previous = history[-1] if history else None
     if not rows:
         return {
             "timestamp": timestamp,
@@ -744,8 +895,12 @@ def analyze_options_market(current_snapshot, history=None, config=None, status=N
     live["bearish_score"] = interval.get("bearish_score")
     trend_window = (history + [snapshot])[-5:]
     trend = aggregate_trend(trend_window, weights)
-    day_snapshots = (list(day_history) if day_history is not None else history) + [snapshot]
+    day_snapshots = day_base + [snapshot]
     day_trend = aggregate_day_trend(day_snapshots, weights)
+    change_windows = build_change_windows(snapshot, history, day_snapshots, weights)
+    live["change"] = change_windows.get("3m", {}).get("change", {})
+    trend["change"] = change_windows.get("15m", {}).get("change", {})
+    day_trend["change"] = change_windows.get("session", {}).get("change", {})
     if live["direction"] in ACTIVE_DIRECTIONS and trend["direction"] in ACTIVE_DIRECTIONS:
         trend["agreement_with_live"] = "Agrees" if live["direction"] == trend["direction"] else "Conflicts"
     else:
@@ -778,6 +933,7 @@ def analyze_options_market(current_snapshot, history=None, config=None, status=N
         "live_bias": live,
         "trend_bias": trend,
         "day_trend": day_trend,
+        "change_windows": change_windows,
         "overall_bias": overall,
         "bullish_score": overall["bullish_score"],
         "bearish_score": overall["bearish_score"],
