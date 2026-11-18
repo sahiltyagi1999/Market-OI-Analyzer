@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="70%">
+      <stop offset="0%" stop-color="#061b22"/>
+      <stop offset="58%" stop-color="#020713"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+    <linearGradient id="green" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#00e13b"/>
+      <stop offset="100%" stop-color="#7cff16"/>
+    </linearGradient>
+    <linearGradient id="red" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff6b57"/>
+      <stop offset="100%" stop-color="#ff001c"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2.8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect x="5" y="5" width="118" height="118" rx="24" fill="url(#bg)" stroke="#0a4a91" stroke-width="4"/>
+  <g filter="url(#glow)" stroke-linecap="round">
+    <g stroke-width="4">
+      <line x1="25" y1="79" x2="25" y2="104" stroke="#ff1616"/>
+      <rect x="20" y="75" width="10" height="15" rx="2" fill="#ff1616"/>
+      <line x1="36" y1="58" x2="36" y2="98" stroke="#18ff2b"/>
+      <rect x="31" y="65" width="10" height="25" rx="2" fill="#18ff2b"/>
+      <line x1="48" y1="36" x2="48" y2="88" stroke="#ff1b1b"/>
+      <rect x="43" y="44" width="10" height="32" rx="2" fill="#ff1b1b"/>
+      <line x1="62" y1="27" x2="62" y2="77" stroke="#18ff2b"/>
+      <rect x="57" y="36" width="10" height="34" rx="2" fill="#18ff2b"/>
+      <line x1="76" y1="20" x2="76" y2="70" stroke="#18ff2b"/>
+      <rect x="71" y="28" width="10" height="34" rx="2" fill="#18ff2b"/>
+      <line x1="96" y1="42" x2="96" y2="91" stroke="#ff1515"/>
+      <rect x="91" y="53" width="10" height="27" rx="2" fill="#ff1515"/>
+    </g>
+    <path d="M16 76 36 51 49 67 61 49 75 67 100 31" fill="none" stroke="#6fff16" stroke-width="9" stroke-linejoin="round"/>
+    <path d="M92 31 110 24 105 44" fill="#6fff16" stroke="#b6ff91" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M61 60 76 80 86 69 106 94" fill="none" stroke="url(#red)" stroke-width="9" stroke-linejoin="round"/>
+    <path d="M95 94 113 103 108 83" fill="#ff1515" stroke="#ff998a" stroke-width="2" stroke-linejoin="round"/>
+  </g>
+</svg>

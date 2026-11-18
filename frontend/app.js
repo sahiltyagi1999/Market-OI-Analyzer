@@ -1795,9 +1795,80 @@ function renderPositioningNotes(live = {}, trend = {}, day = {}) {
 function renderLiveStrikeTable(rows, windowData = {}) {
   if (!rows.length) return '<div class="empty-state">No five-strike rows available.</div>';
   return `
-    <div class="strike-card-list">
-      ${rows.map((row) => renderStrikeCard(row, windowData)).join("")}
+    <div class="strike-table-shell">
+      <div class="strike-table-header">
+        <div>Strike</div>
+        <div>Call (CE) Analysis</div>
+        <div>Put (PE) Analysis</div>
+        <div>Combined Signal</div>
+      </div>
+      <div class="strike-table-body">
+        ${rows.map((row) => renderStrikeTableRow(row)).join("")}
+      </div>
     </div>`;
+}
+
+function renderStrikeTableRow(row) {
+  const finalCls = liveBiasClass(row.net_interpretation);
+  return `
+    <article class="strike-table-row ${row.is_atm ? "atm-row" : ""} ${finalCls}">
+      <div class="strike-cell strike-price-cell">
+        <strong>${Number(row.strike).toLocaleString("en-IN")}</strong>
+        <span>${escHtml(row.label || "")}</span>
+      </div>
+      ${renderStrikeOptionTableCell("call", row.call)}
+      ${renderStrikeOptionTableCell("put", row.put)}
+      ${renderStrikeCombinedTableCell(row)}
+    </article>`;
+}
+
+function renderStrikeOptionTableCell(sideKey, side = {}) {
+  side = side || {};
+  const biasCls = liveBiasClass(side.bias);
+  const oiMove = movementDirection(side.interval_oi_change);
+  const premiumMove = movementDirection(side.interval_premium_change);
+  return `
+    <div class="strike-cell option-analysis-cell ${sideKey} ${biasCls}">
+      <div class="option-ltp">${fmtPrice(side.ltp)}</div>
+      <div class="option-metrics">
+        ${renderStrikeDeltaMetric("OI Δ", oiMove, signedFmt(side.interval_oi_change), pctFmt(side.interval_oi_change_pct))}
+        ${renderStrikeDeltaMetric("Prem Δ", premiumMove, signedPrice(side.interval_premium_change), pctFmt(side.interval_premium_change_pct))}
+      </div>
+      <span class="position-badge ${biasCls}">${escHtml(side.positioning || "Insufficient Data")}</span>
+      <b class="bias-arrow ${biasCls}">${biasArrow(side.bias)}</b>
+    </div>`;
+}
+
+function renderStrikeDeltaMetric(label, move, value, pct) {
+  return `
+    <div class="delta-metric ${move.cls}">
+      <span>${escHtml(label)}</span>
+      <strong><i>${move.arrow}</i> ${escHtml(value)}</strong>
+      <small>${escHtml(pct)}</small>
+    </div>`;
+}
+
+function renderStrikeCombinedTableCell(row) {
+  const finalCls = liveBiasClass(row.net_interpretation);
+  return `
+    <div class="strike-cell combined-table-cell ${finalCls}">
+      <span class="strike-final-pill ${finalCls}">${biasArrow(row.net_interpretation)} ${escHtml(row.net_interpretation || "NEUTRAL")}</span>
+      <p>${escHtml(strikeExplanation(row))}</p>
+      <details class="strike-expand">
+        <summary>Calculation</summary>
+        <div class="strike-detail-grid">
+          ${renderSideDetails("Call", row.call)}
+          ${renderSideDetails("Put", row.put)}
+        </div>
+      </details>
+    </div>`;
+}
+
+function biasArrow(value) {
+  const cls = liveBiasClass(value);
+  if (cls === "bull") return "↗";
+  if (cls === "bear") return "↘";
+  return "→";
 }
 
 function renderStrikeCard(row, windowData = {}) {
@@ -1924,6 +1995,7 @@ function movementLine(label, value, pct, bias, isPremium = false) {
 }
 
 function renderSideDetails(label, side = {}) {
+  side = side || {};
   return `
     <div class="side-detail-box">
       <strong>${escHtml(label)}</strong>
