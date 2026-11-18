@@ -41,7 +41,7 @@ repo_dir = backend_dir.parent
 load_env_file(repo_dir / ".env")
 load_env_file(backend_dir / ".env")
 
-from kite_market import KiteApiError, KiteAuthError, KiteConfigError, KiteDataError, market_service
+from kite_market import KiteApiError, KiteAuthError, KiteConfigError, KiteDataError, market_hours_message, market_service, market_state
 
 APP_NAME = "banknifty-oi-analyzer"
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-6-luna")
@@ -300,6 +300,8 @@ def save_live_snapshot(username, payload):
     analysis = payload.get("analysis") or {}
     status = payload.get("status") or {}
     timestamp = snapshot.get("timestamp") or analysis.get("timestamp") or datetime.now(timezone.utc).isoformat()
+    if market_state(parse_iso_datetime(timestamp)) != "OPEN":
+        return {"saved": False, "reason": "market_closed", "message": market_hours_message()}
     instrument = snapshot.get("instrument") or analysis.get("instrument") or "NIFTY"
     trading_day = live_trading_day(timestamp)
     bucket = live_snapshot_bucket(timestamp)
@@ -347,6 +349,8 @@ def live_options_snapshot():
     expiry = request.args.get("expiry") or None
     force = request.args.get("refresh") in {"1", "true", "yes"}
     try:
+        if market_service.status().get("marketState") != "OPEN":
+            return kite_error_payload("KITE_MARKET_CLOSED", market_hours_message(), False, 409)
         history = load_live_snapshot_history(username, "NIFTY")
         db_history_count = len(history or [])
         payload = market_service.build_live_snapshot(expiry=expiry, force=force, history_override=history)

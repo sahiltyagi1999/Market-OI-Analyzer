@@ -23,6 +23,8 @@ let liveWindowKey = localStorage.getItem("oi_live_window_key") || "3m";
 let brightMode = localStorage.getItem("oi_bright_mode") === "1";
 
 const LIVE_REFRESH_MS = 30000;
+const LIVE_MARKET_OPEN_MINUTES = 9 * 60;
+const LIVE_MARKET_CLOSE_MINUTES = 15 * 60 + 30;
 document.documentElement.classList.toggle("bright-mode", brightMode);
 
 const CONFIG = window.OI_ANALYZER_CONFIG || {};
@@ -159,9 +161,7 @@ function bindActions() {
   document.getElementById("liveRefreshBtn").addEventListener("click", () => loadLiveOptions(true));
   document.getElementById("liveAutoToggle").addEventListener("change", (event) => {
     liveAutoRefresh = event.target.checked;
-    const state = document.getElementById("liveAutoState");
-    state.textContent = liveAutoRefresh ? "On" : "Off";
-    state.className = liveAutoRefresh ? "bull" : "";
+    updateLiveAutoState();
     scheduleLiveRefresh();
   });
   document.querySelectorAll("#newsView [data-inst]").forEach((btn) => {
@@ -1204,14 +1204,36 @@ function scheduleLiveRefresh() {
     clearInterval(liveTimer);
     liveTimer = null;
   }
-  if (!authToken || !liveAutoRefresh) return;
+  updateLiveAutoState();
+  if (!authToken || !liveAutoRefresh || currentView !== "live") return;
+  const marketWindow = liveMarketWindow();
+  if (!marketWindow.open) {
+    liveTimer = setTimeout(() => {
+      if (currentView === "live" && !liveLoading) {
+        if (liveMarketWindow().open) loadLiveOptions(false);
+      }
+      scheduleLiveRefresh();
+    }, 60000);
+    return;
+  }
   liveTimer = setInterval(() => {
-    if (currentView === "live" && !liveLoading) loadLiveOptions(false);
+    if (currentView !== "live" || liveLoading) return;
+    if (!liveMarketWindow().open) {
+      scheduleLiveRefresh();
+      return;
+    }
+    loadLiveOptions(false);
   }, LIVE_REFRESH_MS);
 }
 
 async function loadLiveOptions(forceRefresh = false) {
   if (liveLoading || !authToken) return;
+  const marketWindow = liveMarketWindow();
+  if (!marketWindow.open) {
+    renderLiveMarketClosed(marketWindow);
+    scheduleLiveRefresh();
+    return;
+  }
   liveLoading = true;
   const body = document.getElementById("liveBody");
   const btn = document.getElementById("liveRefreshBtn");
@@ -1247,7 +1269,54 @@ async function loadLiveOptions(forceRefresh = false) {
   } finally {
     liveLoading = false;
     btn.disabled = false;
+    scheduleLiveRefresh();
   }
+}
+
+function updateLiveAutoState() {
+  const state = document.getElementById("liveAutoState");
+  if (!state) return;
+  if (!liveAutoRefresh) {
+    state.textContent = "Off";
+    state.className = "";
+    return;
+  }
+  const marketWindow = liveMarketWindow();
+  state.textContent = marketWindow.open ? "On" : "Paused";
+  state.className = marketWindow.open ? "bull" : "warn";
+}
+
+function liveMarketWindow(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Kolkata",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
+  const weekday = parts.weekday;
+  const hour = Number(parts.hour);
+  const minute = Number(parts.minute);
+  const minutes = hour * 60 + minute;
+  const isWorkingDay = !["Sat", "Sun"].includes(weekday);
+  const open = isWorkingDay && minutes >= LIVE_MARKET_OPEN_MINUTES && minutes < LIVE_MARKET_CLOSE_MINUTES;
+  const state = !isWorkingDay || minutes >= LIVE_MARKET_CLOSE_MINUTES ? "CLOSED" : minutes < LIVE_MARKET_OPEN_MINUTES ? "PREOPEN" : "OPEN";
+  return { open, state, isWorkingDay, minutes };
+}
+
+function renderLiveMarketClosed(marketWindow = liveMarketWindow()) {
+  const sourceState = document.getElementById("liveSourceState");
+  if (sourceState) {
+    sourceState.textContent = marketWindow.state === "PREOPEN" ? "Pre-open" : "Market Closed";
+    sourceState.className = "warn";
+  }
+  document.getElementById("liveUpdated").classList.add("hidden");
+  renderLiveError(
+    "Live snapshots run on NSE working days from 09:00 to 15:30 IST.",
+    { marketState: marketWindow.state },
+    { error: "KITE_MARKET_CLOSED" },
+  );
 }
 
 function kiteStatusLabel(status, errorCode = "") {

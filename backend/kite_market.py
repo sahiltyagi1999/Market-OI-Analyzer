@@ -24,6 +24,10 @@ DEFAULT_SNAPSHOT_SECONDS = 180
 QUOTE_CHUNK_SIZE = 180
 DEFAULT_STRIKES_EACH_SIDE = 8
 IST = timezone(timedelta(hours=5, minutes=30))
+MARKET_OPEN_HOUR = 9
+MARKET_OPEN_MINUTE = 0
+MARKET_CLOSE_HOUR = 15
+MARKET_CLOSE_MINUTE = 30
 KITE_LOGIN_ROOT = "https://kite.zerodha.com/connect/login"
 AUTH_REQUIRED = "AUTH_REQUIRED"
 KITE_CONNECTED = "KITE_CONNECTED"
@@ -76,15 +80,22 @@ def as_quote_key(exchange, tradingsymbol):
 
 def market_state(now=None):
     now = now or datetime.now(IST)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=IST)
+    now = now.astimezone(IST)
     if now.weekday() >= 5:
         return "CLOSED"
-    start = now.replace(hour=9, minute=15, second=0, microsecond=0)
-    end = now.replace(hour=15, minute=30, second=0, microsecond=0)
-    if start <= now <= end:
+    start = now.replace(hour=MARKET_OPEN_HOUR, minute=MARKET_OPEN_MINUTE, second=0, microsecond=0)
+    end = now.replace(hour=MARKET_CLOSE_HOUR, minute=MARKET_CLOSE_MINUTE, second=0, microsecond=0)
+    if start <= now < end:
         return "OPEN"
     if now < start:
         return "PREOPEN"
     return "CLOSED"
+
+
+def market_hours_message():
+    return "Live snapshots run on NSE working days from 09:00 to 15:30 IST."
 
 
 class KiteSessionStore:
@@ -776,6 +787,9 @@ class KiteMarketService:
         return quote
 
     def build_live_snapshot(self, expiry=None, force=False, history_override=None):
+        if market_state() != "OPEN":
+            raise KiteDataError(market_hours_message())
+
         with self._lock:
             if (
                 self._last_snapshot
