@@ -3013,7 +3013,9 @@ code {
 }
 
 .five-strike-intel .strike-intel-card.atm-card {
-  grid-column: 1 / -1;
+  order: -1;
+  grid-column: 2 / 4;
+  justify-self: stretch;
 }
 
 .five-strike-intel .strike-intel-card.atm-card .strike-mini-grid {
@@ -3523,6 +3525,10 @@ html.bright-mode .calc-grid span {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .five-strike-intel .strike-intel-card.atm-card {
+    grid-column: 1 / -1;
+  }
+
   .strike-position-lines div {
     grid-template-columns: minmax(60px, 0.7fr) minmax(160px, 1fr);
   }
@@ -3613,6 +3619,10 @@ html.bright-mode .calc-grid span {
   .strike-mini-grid,
   .tf-side-grid {
     grid-template-columns: 1fr;
+  }
+
+  .five-strike-intel .strike-intel-card.atm-card {
+    grid-column: 1;
   }
 
   .strike-card-head,
