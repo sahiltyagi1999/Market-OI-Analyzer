@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+import html
 import json
 import math
 import os
@@ -15,7 +16,7 @@ from urllib.parse import quote_plus
 
 import requests
 from bson import ObjectId
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, redirect, request
 from flask_cors import CORS
 from pymongo import MongoClient, DESCENDING
 
@@ -39,6 +40,8 @@ backend_dir = Path(BASE_DIR)
 repo_dir = backend_dir.parent
 load_env_file(repo_dir / ".env")
 load_env_file(backend_dir / ".env")
+
+from kite_market import KiteApiError, KiteAuthError, KiteConfigError, KiteDataError, market_service
 
 APP_NAME = "banknifty-oi-analyzer"
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-6-luna")
@@ -71,6 +74,16 @@ CORS(
     },
     supports_credentials=False,
 )
+
+
+@app.after_request
+def add_no_cache_headers(response):
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 
 mongo_client = None
 analyses_collection = None
@@ -130,6 +143,103 @@ def me():
     if not username:
         return jsonify({"error": "Unauthorized."}), 401
     return jsonify({"username": username})
+
+
+def kite_error_payload(error, message, login_required=False, status_code=503):
+    payload = {
+        "success": False,
+        "error": error,
+        "message": message,
+        "loginRequired": bool(login_required),
+        "status": market_service.status(),
+    }
+    if login_required:
+        payload["loginUrl"] = "/api/kite/login"
+    return jsonify(payload), status_code
+
+
+@app.get("/api/kite/login")
+def kite_login():
+    try:
+        return redirect(market_service.login_url(), code=302)
+    except KiteConfigError as exc:
+        return kite_error_payload("KITE_NOT_CONFIGURED", str(exc), False, 503)
+
+
+@app.get("/api/kite/callback")
+def kite_callback():
+    request_token = request.args.get("request_token")
+    status = request.args.get("status")
+    if status and status.lower() != "success":
+        return (
+            "<h2>Kite login failed</h2>"
+            "<p>Zerodha did not return a successful login status. You can close this tab and try again.</p>"
+        ), 400
+    try:
+        result = market_service.exchange_request_token(request_token)
+        user = result.get("user") or {}
+        name = html.escape(str(user.get("user_shortname") or user.get("user_name") or "Kite user"))
+        return (
+            "<h2>Kite authentication successful</h2>"
+            f"<p>Authenticated as {name}. You can close this tab and return to the dashboard.</p>"
+            "<script>setTimeout(function(){ window.close(); }, 1800);</script>"
+        )
+    except KiteConfigError as exc:
+        return f"<h2>Kite is not configured</h2><p>{html.escape(str(exc))}</p>", 503
+    except KiteAuthError as exc:
+        return f"<h2>Kite authentication failed</h2><p>{html.escape(str(exc))}</p>", 401
+    except KiteApiError as exc:
+        return f"<h2>Kite authentication failed</h2><p>{html.escape(str(exc))}</p>", 502
+
+
+@app.get("/api/kite/status")
+def kite_status():
+    username = require_user()
+    if not username:
+        return jsonify({"error": "Unauthorized."}), 401
+    return jsonify({"success": True, "kite": market_service.status()})
+
+
+@app.post("/api/kite/logout")
+def kite_logout():
+    username = require_user()
+    if not username:
+        return jsonify({"error": "Unauthorized."}), 401
+    return jsonify(market_service.logout())
+
+
+@app.get("/api/live-options/status")
+def live_options_status():
+    username = require_user()
+    if not username:
+        return jsonify({"error": "Unauthorized."}), 401
+    return jsonify({"success": True, "status": market_service.status()})
+
+
+@app.get("/api/live-options/snapshot")
+def live_options_snapshot():
+    username = require_user()
+    if not username:
+        return jsonify({"error": "Unauthorized."}), 401
+
+    expiry = request.args.get("expiry") or None
+    force = request.args.get("refresh") in {"1", "true", "yes"}
+    try:
+        payload = market_service.build_live_snapshot(expiry=expiry, force=force)
+        payload["success"] = True
+        return jsonify(payload)
+    except KiteConfigError as exc:
+        return kite_error_payload("KITE_NOT_CONFIGURED", str(exc), False, 503)
+    except KiteAuthError:
+        return kite_error_payload("KITE_AUTH_REQUIRED", "Kite authentication is required", True, 401)
+    except KiteDataError as exc:
+        code = "KITE_MARKET_CLOSED" if market_service.status().get("marketState") != "OPEN" else "KITE_DATA_UNAVAILABLE"
+        message = "Market is closed or live Kite market data is unavailable." if code == "KITE_MARKET_CLOSED" else str(exc)
+        return kite_error_payload(code, message, False, 503)
+    except KiteApiError as exc:
+        return kite_error_payload("KITE_DATA_UNAVAILABLE", str(exc), False, 502)
+    except Exception as exc:
+        return kite_error_payload("KITE_DATA_UNAVAILABLE", str(exc), False, 502)
 
 
 @app.post("/api/analyze")

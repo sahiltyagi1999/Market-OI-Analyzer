@@ -3,3 +3,4 @@ flask-cors==5.0.0
 gunicorn==23.0.0
 pymongo==4.10.1
 requests==2.32.3
+kiteconnect==5.2.2

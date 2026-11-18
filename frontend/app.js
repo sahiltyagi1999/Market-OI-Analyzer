@@ -9,12 +9,18 @@ let csvType = "chain";
 let currentAnalysisId = "";
 let currentFileName = "";
 let savePromise = Promise.resolve();
-let currentView = "oi";
+let currentView = "live";
 let newsInstrument = "NIFTY";
 let newsLoading = false;
 let newsLoaded = {};
 let newsFilter = "";
 let lastNews = null;
+let liveLoading = false;
+let liveLoaded = false;
+let liveAutoRefresh = true;
+let liveTimer = null;
+
+const LIVE_REFRESH_MS = 30000;
 
 const CONFIG = window.OI_ANALYZER_CONFIG || {};
 const STRIKE_RANGE = {
@@ -39,9 +45,20 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 function getApiBase() {
+  const explicitEnvBase = frontendEnv.BACKEND_BASE_URL || frontendEnv.FRONTEND_API_BASE_URL;
+  if (explicitEnvBase) return explicitEnvBase.replace(/\/$/, "");
+
+  const host = window.location.hostname;
+  const isLocalFrontend =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "" ||
+    host.startsWith("192.168.") ||
+    host.startsWith("10.") ||
+    host.endsWith(".local");
+  if (isLocalFrontend) return "http://localhost:10000";
+
   return (
-    frontendEnv.BACKEND_BASE_URL ||
-    frontendEnv.FRONTEND_API_BASE_URL ||
     CONFIG.apiBaseUrl ||
     "http://localhost:10000"
   ).replace(/\/$/, "");
@@ -130,6 +147,14 @@ function bindActions() {
   document.querySelectorAll(".nav-btn").forEach((btn) => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
   });
+  document.getElementById("liveRefreshBtn").addEventListener("click", () => loadLiveOptions(true));
+  document.getElementById("liveAutoToggle").addEventListener("change", (event) => {
+    liveAutoRefresh = event.target.checked;
+    const state = document.getElementById("liveAutoState");
+    state.textContent = liveAutoRefresh ? "On" : "Off";
+    state.className = liveAutoRefresh ? "bull" : "";
+    scheduleLiveRefresh();
+  });
   document.querySelectorAll("#newsView [data-inst]").forEach((btn) => {
     btn.addEventListener("click", () => {
       newsInstrument = btn.dataset.inst;
@@ -155,6 +180,10 @@ function bindActions() {
   });
 }
 
+function openKiteLogin() {
+  window.open(apiUrl("/api/kite/login"), "_blank", "noopener,noreferrer,width=900,height=760");
+}
+
 function bindUpload() {
   const dz = document.getElementById("dropZone");
   dz.addEventListener("dragover", (event) => {
@@ -174,21 +203,26 @@ function bindUpload() {
 
 function setView(view) {
   currentView = view;
+  document.getElementById("liveView").classList.toggle("hidden", view !== "live");
   document.getElementById("appView").classList.toggle("hidden", view !== "oi");
   document.getElementById("newsView").classList.toggle("hidden", view !== "news");
   document.querySelectorAll(".nav-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.view === view);
   });
+  if (view === "live" && !liveLoaded) loadLiveOptions();
   if (view === "news" && !newsLoaded[newsInstrument]) loadNews();
+  scheduleLiveRefresh();
 }
 
 function showLogin() {
   document.getElementById("loginView").classList.remove("hidden");
+  document.getElementById("liveView").classList.add("hidden");
   document.getElementById("appView").classList.add("hidden");
   document.getElementById("newsView").classList.add("hidden");
   document.getElementById("mainNav").classList.add("hidden");
   document.getElementById("logoutBtn").classList.add("hidden");
   document.getElementById("userPill").textContent = "Not logged in";
+  scheduleLiveRefresh();
 }
 
 function showApp() {
@@ -205,11 +239,14 @@ function logout() {
   localStorage.removeItem("oi_auth_token");
   localStorage.removeItem("oi_username");
   reset();
-  currentView = "oi";
+  currentView = "live";
+  liveLoaded = false;
   newsLoaded = {};
+  document.getElementById("liveBody").innerHTML =
+    '<div class="empty-state">Loading live NIFTY options intelligence from Kite...</div>';
   document.getElementById("newsBody").innerHTML =
     '<div class="empty-state">Click <strong>Fetch Latest News</strong> to load headlines and a sentiment score.</div>';
-  setView("oi");
+  setView("live");
   showLogin();
 }
 
@@ -1122,6 +1159,296 @@ function escHtml(value) {
 
 function escAttr(value) {
   return escHtml(value).replace(/`/g, "&#96;");
+}
+
+/* ---------- Live options intelligence ---------- */
+
+function scheduleLiveRefresh() {
+  if (liveTimer) {
+    clearInterval(liveTimer);
+    liveTimer = null;
+  }
+  if (!authToken || !liveAutoRefresh) return;
+  liveTimer = setInterval(() => {
+    if (currentView === "live" && !liveLoading) loadLiveOptions(false);
+  }, LIVE_REFRESH_MS);
+}
+
+async function loadLiveOptions(forceRefresh = false) {
+  if (liveLoading || !authToken) return;
+  liveLoading = true;
+  const body = document.getElementById("liveBody");
+  const btn = document.getElementById("liveRefreshBtn");
+  const sourceState = document.getElementById("liveSourceState");
+  btn.disabled = true;
+  sourceState.textContent = "Fetching";
+  if (!liveLoaded) {
+    body.innerHTML = '<div class="ai-loading"><div class="spin"></div>Building live NIFTY option chain from Kite...</div>';
+  }
+
+  try {
+    const liveParams = new URLSearchParams();
+    if (forceRefresh) liveParams.set("refresh", "1");
+    liveParams.set("_", String(Date.now()));
+    const res = await fetch(apiUrl(`/api/live-options/snapshot?${liveParams.toString()}`), {
+      headers: authHeaders(),
+      cache: "no-store",
+    });
+    const data = await readApiJson(res);
+    if (!res.ok || data.success === false) {
+      throw Object.assign(new Error(data.message || data.error || "Could not load live options."), { data });
+    }
+    liveLoaded = true;
+    sourceState.textContent = kiteStatusLabel(data.status);
+    sourceState.className = kiteStatusClass(data.status);
+    renderLiveOptions(data);
+  } catch (error) {
+    const status = error.data?.status;
+    sourceState.textContent = kiteStatusLabel(status, error.data?.error);
+    sourceState.className = kiteStatusClass(status, error.data?.error);
+    renderLiveError(error.message || "Could not load live options.", status, error.data || {});
+  } finally {
+    liveLoading = false;
+    btn.disabled = false;
+  }
+}
+
+function kiteStatusLabel(status, errorCode = "") {
+  if (errorCode === "KITE_AUTH_REQUIRED" || status?.loginRequired || status?.authState === "AUTH_REQUIRED") {
+    return "Kite Authentication Required";
+  }
+  if (status?.authState === "KITE_CONNECTED" || status?.authenticated) {
+    return "Kite Connected";
+  }
+  if (status?.authState === "KITE_RECONNECTING" || status?.websocket?.state === "reconnecting") {
+    return "Kite Reconnecting";
+  }
+  if (errorCode === "KITE_MARKET_CLOSED" || status?.marketState === "CLOSED") {
+    return "Market Closed";
+  }
+  if (status) return "Kite Disconnected";
+  return "Kite Unavailable";
+}
+
+function kiteStatusClass(status, errorCode = "") {
+  const label = kiteStatusLabel(status, errorCode).toLowerCase();
+  if (label.includes("connected")) return "bull";
+  if (label.includes("auth")) return "bear";
+  return "warn";
+}
+
+function liveBiasClass(direction) {
+  const d = String(direction || "").toUpperCase();
+  if (d === "BULLISH") return "bull";
+  if (d === "BEARISH") return "bear";
+  return "neut";
+}
+
+function liveScoreClass(score) {
+  const value = Number(score) || 0;
+  if (value > 0.5) return "bull";
+  if (value < -0.5) return "bear";
+  return "warn";
+}
+
+function fmtPrice(value) {
+  const num = Number(value);
+  return Number.isFinite(num) && num !== 0
+    ? num.toLocaleString("en-IN", { maximumFractionDigits: 2 })
+    : "-";
+}
+
+function renderLiveError(message, status, payload = {}) {
+  const websocket = status?.websocket;
+  const normalizedMessage = String(message || payload.message || payload.error || "");
+  const oldTokenRequiredMessage =
+    normalizedMessage.includes("KITE_ACCESS_TOKEN") ||
+    normalizedMessage.includes("access token") ||
+    normalizedMessage.includes("authentication");
+  const loginRequired =
+    payload.loginRequired ||
+    status?.loginRequired ||
+    payload.error === "KITE_AUTH_REQUIRED" ||
+    oldTokenRequiredMessage;
+  const title = loginRequired
+    ? "Kite Authentication Required"
+    : payload.error === "KITE_MARKET_CLOSED"
+      ? "Market Closed"
+      : "Live Options Unavailable";
+  const displayMessage = loginRequired
+    ? "Kite authentication is required. Access token is created by Zerodha login, so KITE_ACCESS_TOKEN is not required in env."
+    : message;
+  document.getElementById("liveUpdated").classList.add("hidden");
+  document.getElementById("liveBody").innerHTML = `
+    <section class="panel live-error">
+      <div class="panel-title">${escHtml(title)}</div>
+      <div class="empty-state warn">${escHtml(displayMessage)}</div>
+      <div class="live-error-grid">
+        <div><span>Kite Status</span><strong>${escHtml(kiteStatusLabel(status, payload.error))}</strong></div>
+        <div><span>WebSocket</span><strong>${websocket?.enabled ? (websocket.connected ? "Connected" : websocket.state || "Enabled") : "Off"}</strong></div>
+        <div><span>Market</span><strong>${escHtml(status?.marketState || "-")}</strong></div>
+        <div><span>Last Connection</span><strong>${status?.last_successful_connection_at ? formatTime(status.last_successful_connection_at) : "-"}</strong></div>
+        <div><span>Last Snapshot</span><strong>${status?.last_snapshot_at ? formatTime(status.last_snapshot_at) : "-"}</strong></div>
+        <div><span>Error Code</span><strong>${escHtml(payload.error || "-")}</strong></div>
+      </div>
+      ${loginRequired ? '<button class="primary-btn kite-login-btn" type="button" onclick="openKiteLogin()">Login with Zerodha</button>' : ""}
+      ${websocket?.error ? `<div class="risk-box">WebSocket: ${escHtml(websocket.error)}</div>` : ""}
+    </section>`;
+}
+
+function renderLiveOptions(data) {
+  const analysis = data.analysis || {};
+  const snapshot = data.snapshot || {};
+  const status = data.status || {};
+  const cls = liveBiasClass(analysis.direction);
+  const confidence = Number(analysis.confidence) || 0;
+  const live = analysis.live_bias || {};
+  const trend = analysis.trend_bias || {};
+  const levels = analysis.support_resistance || {};
+  const quality = analysis.data_quality || {};
+  const websocket = status.websocket || {};
+  const kiteLabel = kiteStatusLabel(status);
+  const kiteCls = kiteStatusClass(status);
+
+  document.getElementById("liveUpdated").classList.remove("hidden");
+  document.getElementById("liveUpdatedAt").textContent = formatTime(analysis.timestamp || snapshot.timestamp);
+
+  document.getElementById("liveBody").innerHTML = `
+    <div class="live-grid">
+      <section class="signal-banner ${cls} live-signal">
+        <div>
+          <span>NIFTY Options Direction</span>
+          <strong>${escHtml(analysis.direction || "INSUFFICIENT DATA")}</strong>
+          <div class="live-subline">Confidence ${confidence}% · ${escHtml(snapshot.expiry || "-")} expiry · <span class="${kiteCls}">${escHtml(kiteLabel)}</span></div>
+        </div>
+        <div class="pcr-box">
+          <span>Spot</span>
+          <strong>${fmtPrice(analysis.spot)}</strong>
+        </div>
+      </section>
+
+      <div class="metrics live-metrics">
+        ${liveMetric("Live Bias", live.direction, `${live.confidence || 0}%`, liveBiasClass(live.direction))}
+        ${liveMetric("Trend Bias", trend.direction, `${trend.confidence || 0}%`, liveBiasClass(trend.direction))}
+        ${liveMetric("Bullish Score", analysis.bullish_score, "weighted", "bull")}
+        ${liveMetric("Bearish Score", analysis.bearish_score, "weighted", "bear")}
+        ${liveMetric("PCR", analysis.pcr ?? "-", "put/call OI", Number(analysis.pcr) >= 1 ? "bull" : "bear")}
+        ${liveMetric("Max Pain", analysis.max_pain ? Number(analysis.max_pain).toLocaleString("en-IN") : "-", "strike", "warn")}
+        ${liveMetric("Support", levels.support ? Number(levels.support).toLocaleString("en-IN") : "-", fmt(levels.support_oi), "bull")}
+        ${liveMetric("Resistance", levels.resistance ? Number(levels.resistance).toLocaleString("en-IN") : "-", fmt(levels.resistance_oi), "bear")}
+      </div>
+
+      <div class="split-grid">
+        <section class="panel">
+          <div class="panel-title">Signal Strength</div>
+          ${renderLiveStrength(analysis)}
+        </section>
+        <section class="panel">
+          <div class="panel-title">Market Structure</div>
+          ${renderLiveStructure(analysis, snapshot, status, websocket, quality)}
+        </section>
+      </div>
+
+      <section class="panel">
+        <div class="panel-title">Why This Direction</div>
+        <div class="live-explain-list">
+          ${(analysis.explanations || []).map((item) => `<div class="live-explain">${escHtml(item)}</div>`).join("") || '<div class="empty-state">No explanation available yet.</div>'}
+        </div>
+        ${(analysis.conflicts || []).length ? `<div class="conflict-list">${analysis.conflicts.map((item) => `<span>${escHtml(item)}</span>`).join("")}</div>` : ""}
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">Strike-Level Intelligence</div>
+        ${renderLiveStrikeTable(analysis.strikes || [])}
+      </section>
+    </div>`;
+}
+
+function liveMetric(label, value, sub, cls) {
+  return `
+    <div class="metric">
+      <div class="metric-label">${escHtml(label)}</div>
+      <div class="metric-val ${cls}">${escHtml(value ?? "-")}</div>
+      <div class="metric-sub">${escHtml(sub || "")}</div>
+    </div>`;
+}
+
+function renderLiveStrength(analysis) {
+  const bull = Number(analysis.bullish_score) || 0;
+  const bear = Number(analysis.bearish_score) || 0;
+  const max = Math.max(bull, bear, 1);
+  return `
+    <div class="strength-list">
+      <div class="strength-row">
+        <div><strong class="bull">${bull.toFixed(2)}</strong><span>Bullish pressure</span></div>
+        <i class="bull-fill" style="width:${Math.max(4, (bull / max) * 100)}%"></i>
+      </div>
+      <div class="strength-row">
+        <div><strong class="bear">${bear.toFixed(2)}</strong><span>Bearish pressure</span></div>
+        <i class="bear-fill" style="width:${Math.max(4, (bear / max) * 100)}%"></i>
+      </div>
+    </div>`;
+}
+
+function renderLiveStructure(analysis, snapshot, status, websocket, quality) {
+  const ivText = analysis.atm_iv ? `${analysis.atm_iv}%` : "Unavailable";
+  const ivPct = analysis.iv_percentile ? `${analysis.iv_percentile}%` : "Unavailable";
+  return `
+    <div class="level-list live-structure">
+      ${liveLevel("ATM Strike", analysis.atm ? Number(analysis.atm).toLocaleString("en-IN") : "-", "blue")}
+      ${liveLevel("Total Call OI", fmt(analysis.total_call_oi), "bear")}
+      ${liveLevel("Total Put OI", fmt(analysis.total_put_oi), "bull")}
+      ${liveLevel("ATM IV", ivText, analysis.atm_iv ? "warn" : "")}
+      ${liveLevel("IV Percentile", ivPct, analysis.iv_percentile ? "warn" : "")}
+      ${liveLevel("VWAP", analysis.vwap ? fmtPrice(analysis.vwap) : "Unavailable", analysis.vwap ? "blue" : "")}
+      ${liveLevel("Kite", kiteStatusLabel(status), kiteStatusClass(status))}
+      ${liveLevel("WebSocket", websocket.connected ? "Connected" : (websocket.enabled ? (websocket.state || "Reconnecting") : "REST only"), websocket.connected ? "bull" : "warn")}
+      ${liveLevel("Market", status.marketState || "Unknown", status.marketState === "OPEN" ? "bull" : "warn")}
+      ${liveLevel("Data Quality", quality.status || "unknown", quality.status === "ok" ? "bull" : "warn")}
+    </div>
+    <div class="chart-note">${escHtml(analysis.iv_note || snapshot.iv_note || "")}</div>`;
+}
+
+function liveLevel(name, value, cls) {
+  return `
+    <div class="level-item">
+      <div class="level-name">${escHtml(name)}</div>
+      <div class="level-val ${cls || ""}">${escHtml(value)}</div>
+    </div>`;
+}
+
+function renderLiveStrikeTable(rows) {
+  if (!rows.length) return '<div class="empty-state">No strike rows available.</div>';
+  return `
+    <div class="trade-table-wrap">
+      <table class="trade-table live-strike-table">
+        <thead>
+          <tr>
+            <th>Strike</th><th>CE Position</th><th>CE OI Chg</th><th>CE LTP</th>
+            <th>PE LTP</th><th>PE OI Chg</th><th>PE Position</th><th>Net</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row) => `
+            <tr class="${row.is_atm ? "near-row" : ""}">
+              <td class="label-col">${Number(row.strike).toLocaleString("en-IN")}${row.is_atm ? ' <em class="tag atm">ATM</em>' : ""}</td>
+              <td class="${liveBiasClass(row.call?.bias)}">${escHtml(row.call?.positioning || "-")}</td>
+              <td class="num ${Number(row.call?.change_oi) >= 0 ? "bear" : "bull"}">${signedFmt(row.call?.change_oi)}</td>
+              <td class="num">${fmtPrice(row.call?.ltp)}</td>
+              <td class="num">${fmtPrice(row.put?.ltp)}</td>
+              <td class="num ${Number(row.put?.change_oi) >= 0 ? "bull" : "bear"}">${signedFmt(row.put?.change_oi)}</td>
+              <td class="${liveBiasClass(row.put?.bias)}">${escHtml(row.put?.positioning || "-")}</td>
+              <td class="num ${liveScoreClass(row.net_score)}">${signedFmt(row.net_score)}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function signedFmt(value) {
+  const num = Number(value) || 0;
+  const sign = num > 0 ? "+" : "";
+  return `${sign}${fmt(num)}`;
 }
 
 /* ---------- News sentiment ---------- */

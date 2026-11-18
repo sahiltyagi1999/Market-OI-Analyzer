@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-store">
   <title>NSE OI Analyzer</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20261118-kite-auth">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -20,7 +21,8 @@
         </div>
       </div>
       <nav class="main-nav hidden" id="mainNav">
-        <button class="nav-btn active" type="button" data-view="oi">OI Analyzer</button>
+        <button class="nav-btn active" type="button" data-view="live">Live Options</button>
+        <button class="nav-btn" type="button" data-view="oi">OI Analyzer</button>
         <button class="nav-btn" type="button" data-view="news">News Sentiment</button>
       </nav>
       <div class="topbar-actions">
@@ -63,6 +65,45 @@
           <div class="form-error" id="loginError"></div>
         </form>
       </section>
+    </main>
+
+    <main id="liveView" class="live-view hidden">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <div class="toolbar-group">
+            <div class="section-label">Live Instrument</div>
+            <div class="segmented">
+              <button class="seg-btn active" type="button">Nifty 50</button>
+            </div>
+          </div>
+          <div class="toolbar-group">
+            <div class="section-label">Source</div>
+            <div class="live-source-pill">
+              <strong>Zerodha Kite</strong>
+              <span id="liveSourceState">Waiting</span>
+            </div>
+          </div>
+        </div>
+        <div class="toolbar-right">
+          <div class="source-info hidden" id="liveUpdated">
+            <span>Snapshot</span>
+            <strong id="liveUpdatedAt">--</strong>
+          </div>
+          <label class="ai-toggle" title="Refresh live options every 30 seconds">
+            <input type="checkbox" id="liveAutoToggle" checked>
+            <span class="switch"></span>
+            <span class="ai-toggle-text">
+              <span>Auto Refresh</span>
+              <strong id="liveAutoState" class="bull">On</strong>
+            </span>
+          </label>
+          <button class="primary-btn" id="liveRefreshBtn" type="button"><span class="btn-icon">&#8635;</span> Refresh Live Data</button>
+        </div>
+      </div>
+
+      <div id="liveBody" class="live-body">
+        <div class="empty-state">Loading live NIFTY options intelligence from Kite...</div>
+      </div>
     </main>
 
     <main id="appView" class="workspace hidden">
@@ -215,7 +256,7 @@
     </main>
   </div>
 
-  <script src="config.js"></script>
-  <script src="app.js"></script>
+  <script src="config.js?v=20261118-kite-auth"></script>
+  <script src="app.js?v=20261118-kite-auth"></script>
 </body>
 </html>

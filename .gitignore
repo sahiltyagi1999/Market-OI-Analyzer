@@ -13,6 +13,10 @@
 .env
 **/.env
 frontend/config.local.js
+.kite_session.json
+.kite_session.json.tmp
+backend/.kite_session.json
+backend/.kite_session.json.tmp
 
 # Python
 __pycache__/
