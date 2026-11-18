@@ -1852,13 +1852,6 @@ code {
   font-weight: 700;
 }
 
-.live-strike-table td.num {
-  font-family: "JetBrains Mono", monospace;
-  font-weight: 700;
-  text-align: right;
-  white-space: nowrap;
-}
-
 .panel-title-row {
   display: flex;
   align-items: start;
@@ -1887,20 +1880,21 @@ code {
 }
 
 .window-btn {
-  min-height: 32px;
-  padding: 0 11px;
+  min-height: 34px;
+  padding: 0 13px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 8px;
   background: transparent;
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   font-weight: 800;
 }
 
 .window-btn.active {
   color: var(--white);
-  background: var(--cobalt);
-  border-color: var(--cobalt-bright);
+  background: linear-gradient(180deg, #0b7b38, #064d25);
+  border-color: rgba(57, 255, 20, 0.55);
+  box-shadow: 0 0 18px rgba(57, 255, 20, 0.22);
 }
 
 .window-btn.unavailable:not(.active) {
@@ -1921,54 +1915,323 @@ code {
   padding: 10px 11px;
 }
 
-.change-cell {
-  display: inline-grid;
-  gap: 2px;
-  min-width: 96px;
-  padding: 7px 9px;
+.strike-card-list {
+  display: grid;
+  gap: 12px;
 }
 
-.strike-number-table th,
-.strike-number-table td {
-  padding: 10px 12px;
+.strike-intel-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent), var(--inset);
 }
 
-.strike-number-table td small {
-  display: block;
-  margin-top: 4px;
+.strike-intel-card.atm-card {
+  border-color: rgba(245, 197, 24, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(245, 197, 24, 0.08), 0 0 28px rgba(245, 197, 24, 0.08);
 }
 
-.mini-change {
-  display: block;
+.strike-card-head,
+.side-head,
+.movement-top,
+.position-row,
+.side-detail-box div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.live-strike-table th:not(:first-child),
-.live-strike-table td:not(:first-child) {
-  white-space: normal;
+.strike-card-head {
+  margin-bottom: 14px;
 }
 
-.compact-five th,
-.compact-five td {
-  vertical-align: top;
-}
-
-.compact-five .label-col strong {
-  font-family: "JetBrains Mono", monospace;
-  color: var(--white);
-}
-
-.strike-details {
-  margin-top: 6px;
+.strike-card-head span {
   color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
-.strike-details summary {
-  cursor: pointer;
+.strike-card-head strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--white);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 1.3rem;
+}
+
+.strike-final-pill,
+.position-badge {
+  padding: 5px 10px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.strike-final-pill.bull,
+.position-badge.bull {
+  color: var(--neon);
+  border-color: rgba(57, 255, 20, 0.38);
+  background: var(--bull-soft);
+}
+
+.strike-final-pill.bear,
+.position-badge.bear {
+  color: var(--red);
+  border-color: rgba(255, 46, 77, 0.42);
+  background: var(--bear-soft);
+}
+
+.strike-final-pill.neut,
+.position-badge.neut {
   color: var(--gold);
+  border-color: rgba(245, 197, 24, 0.4);
+  background: var(--warn-soft);
+}
+
+.strike-analysis-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(260px, 0.72fr);
+  gap: 12px;
+}
+
+.side-analysis,
+.combined-signal {
+  min-height: 214px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.side-analysis.call {
+  background: linear-gradient(180deg, rgba(0, 71, 171, 0.08), transparent), var(--surface);
+}
+
+.side-analysis.put {
+  background: linear-gradient(180deg, rgba(245, 197, 24, 0.045), transparent), var(--surface);
+}
+
+.side-head {
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--border);
+}
+
+.side-head > strong,
+.combined-signal > span {
+  color: var(--white);
+  font-size: 0.96rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+}
+
+.side-ltp {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.side-ltp b {
+  margin-left: 6px;
+  color: var(--white);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 1rem;
+}
+
+.movement-line {
+  margin-top: 11px;
+}
+
+.movement-top span {
+  color: var(--muted);
   font-size: 0.72rem;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.movement-top strong {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 1rem;
+}
+
+.movement-line.bull .movement-top strong {
+  color: var(--neon);
+}
+
+.movement-line.bear .movement-top strong {
+  color: var(--red);
+}
+
+.movement-line.neut .movement-top strong {
+  color: var(--gold);
+}
+
+.movement-top small {
+  color: inherit;
+  font-size: 0.78rem;
+}
+
+.movement-top i {
+  font-style: normal;
+}
+
+.movement-top i.up {
+  color: var(--neon);
+}
+
+.movement-top i.down {
+  color: var(--red);
+}
+
+.movement-top i.flat {
+  color: var(--gold);
+}
+
+.move-bar {
+  overflow: hidden;
+  height: 5px;
+  margin-top: 7px;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+
+.move-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.move-bar i.up {
+  background: var(--neon);
+}
+
+.move-bar i.down {
+  background: var(--red);
+}
+
+.move-bar i.flat {
+  background: var(--gold);
+}
+
+.position-row {
+  margin-top: 14px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border);
+}
+
+.position-row span {
+  color: var(--white);
+  font-weight: 900;
+}
+
+.position-row b {
+  font-size: 0.78rem;
   letter-spacing: 0.06em;
+}
+
+.combined-signal {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.combined-signal > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.combined-signal > strong {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 1.55rem;
+}
+
+.combined-signal.bull > strong {
+  color: var(--neon);
+}
+
+.combined-signal.bear > strong {
+  color: var(--red);
+}
+
+.combined-signal.neut > strong {
+  color: var(--gold);
+}
+
+.combined-signal em {
+  color: var(--muted);
+  font-style: normal;
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 800;
+}
+
+.combined-signal p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.strike-expand {
+  margin-top: 12px;
+  color: var(--muted);
+}
+
+.strike-expand summary {
+  cursor: pointer;
+  color: var(--gold);
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.strike-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.side-detail-box {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.side-detail-box > strong {
+  color: var(--white);
+}
+
+.side-detail-box div {
+  align-items: start;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+}
+
+.side-detail-box span {
+  color: var(--subtle);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.side-detail-box b {
+  max-width: 62%;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-align: right;
 }
 
 .calc-grid {
@@ -2330,6 +2593,15 @@ html.bright-mode .calc-grid span {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .strike-analysis-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .side-analysis,
+  .combined-signal {
+    min-height: auto;
+  }
+
   .live-error-grid {
     grid-template-columns: 1fr;
   }
@@ -2379,6 +2651,10 @@ html.bright-mode .calc-grid span {
 
   .window-btn {
     flex: 1;
+  }
+
+  .strike-detail-grid {
+    grid-template-columns: 1fr;
   }
 
   .calc-grid {
@@ -2453,6 +2729,21 @@ html.bright-mode .calc-grid span {
   .bias-change-grid,
   .window-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .strike-card-head,
+  .side-head,
+  .movement-top,
+  .position-row,
+  .side-detail-box div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .side-detail-box b {
+    max-width: none;
+    text-align: left;
   }
 
   .calc-grid {

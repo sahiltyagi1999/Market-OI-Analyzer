@@ -1448,7 +1448,8 @@ function renderBiasChangeGrid(change = {}, windowData = {}) {
     ["Spot", change.spot_change, change.spot_change_pct, "pts"],
     ["Call OI", change.call_oi_change, change.call_oi_change_pct, ""],
     ["Put OI", change.put_oi_change, change.put_oi_change_pct, ""],
-    ["Net OI", change.net_oi_change, change.net_oi_change_pct, ""],
+    ["Call Prem", change.call_premium_change, change.call_premium_change_pct, ""],
+    ["Put Prem", change.put_premium_change, change.put_premium_change_pct, ""],
   ];
   return `
     <div class="bias-change-grid">
@@ -1564,11 +1565,16 @@ function renderWindowSummary(windowData = {}) {
     ["Put OI", c.put_oi_change, c.put_oi_change_pct, ""],
     ["Call Prem", c.call_premium_change, c.call_premium_change_pct, ""],
     ["Put Prem", c.put_premium_change, c.put_premium_change_pct, ""],
-    ["Net OI", c.net_oi_change, c.net_oi_change_pct, ""],
+    ["Overall", windowData.direction || "INSUFFICIENT DATA", windowData.confidence ?? 0, "summary"],
   ];
   return `
     <div class="window-summary-grid">
-      ${items.map(([label, value, pct, unit]) => `
+      ${items.map(([label, value, pct, unit]) => unit === "summary" ? `
+        <div class="window-stat ${liveBiasClass(value)}">
+          <span>${escHtml(label)}</span>
+          <strong>${escHtml(value || "-")}</strong>
+          <small>${Number(pct) || 0}% confidence</small>
+        </div>` : `
         <div class="window-stat ${changeClass(value)}">
           <span>${escHtml(label)}</span>
           <strong>${pctFmt(pct)}</strong>
@@ -1602,35 +1608,131 @@ function renderLiveStrikeTable(rows, windowData = {}) {
   if (!rows.length) return '<div class="empty-state">No five-strike rows available.</div>';
   return `
     ${!windowData.available ? `<div class="table-note warn">${escHtml(windowData.reason || "No saved comparison snapshot for this window; showing current strike values.")}</div>` : ""}
-    <div class="trade-table-wrap">
-      <table class="trade-table live-strike-table strike-number-table">
-        <thead>
-          <tr>
-            <th>Strike</th>
-            <th>Call LTP</th>
-            <th>Call OI</th>
-            <th>Call Activity</th>
-            <th>Put LTP</th>
-            <th>Put OI</th>
-            <th>Put Activity</th>
-            <th>Net</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map((row) => `
-            <tr class="${row.is_atm ? "near-row" : ""}">
-              <td class="label-col">${escHtml(row.label || "")}<br><strong>${Number(row.strike).toLocaleString("en-IN")}</strong></td>
-              <td class="num">${fmtPrice(row.call?.ltp)}</td>
-              <td>${renderChangeCell(row.call?.interval_oi_change, row.call?.interval_oi_change_pct)}</td>
-              <td class="${liveBiasClass(row.call?.bias)}">${escHtml(row.call?.positioning || "-")}<small>${renderChangeText(row.call?.interval_premium_change, row.call?.interval_premium_change_pct)}</small></td>
-              <td class="num">${fmtPrice(row.put?.ltp)}</td>
-              <td>${renderChangeCell(row.put?.interval_oi_change, row.put?.interval_oi_change_pct)}</td>
-              <td class="${liveBiasClass(row.put?.bias)}">${escHtml(row.put?.positioning || "-")}<small>${renderChangeText(row.put?.interval_premium_change, row.put?.interval_premium_change_pct)}</small></td>
-              <td class="${liveBiasClass(row.net_interpretation)}"><strong>${escHtml(row.net_interpretation || "-")}</strong><small>Score ${signedPrice(row.net_score)}</small></td>
-            </tr>`).join("")}
-        </tbody>
-      </table>
+    <div class="strike-card-list">
+      ${rows.map((row) => renderStrikeCard(row, windowData)).join("")}
     </div>`;
+}
+
+function renderStrikeCard(row, windowData = {}) {
+  const finalCls = liveBiasClass(row.net_interpretation);
+  return `
+    <article class="strike-intel-card ${row.is_atm ? "atm-card" : ""} ${finalCls}">
+      <div class="strike-card-head">
+        <div>
+          <span>${escHtml(row.label || "")}</span>
+          <strong>${Number(row.strike).toLocaleString("en-IN")}</strong>
+        </div>
+        <div class="strike-final-pill ${finalCls}">${escHtml(row.net_interpretation || "NEUTRAL")}</div>
+      </div>
+      <div class="strike-analysis-grid">
+        ${renderSideAnalysis("CALL ANALYSIS", row.call, "call")}
+        ${renderSideAnalysis("PUT ANALYSIS", row.put, "put")}
+        ${renderCombinedSignal(row)}
+      </div>
+      <details class="strike-expand">
+        <summary>Directional calculation</summary>
+        <div class="strike-detail-grid">
+          ${renderSideDetails("Call", row.call)}
+          ${renderSideDetails("Put", row.put)}
+        </div>
+      </details>
+    </article>`;
+}
+
+function renderSideAnalysis(title, side = {}, sideKey = "") {
+  const bias = liveBiasClass(side.bias);
+  return `
+    <section class="side-analysis ${sideKey} ${bias}">
+      <div class="side-head">
+        <strong>${escHtml(title)}</strong>
+        <span class="position-badge ${bias}">${escHtml(side.bias || "NEUTRAL")}</span>
+      </div>
+      <div class="side-ltp">LTP <b>${fmtPrice(side.ltp)}</b></div>
+      ${movementLine("OI", side.interval_oi_change, side.interval_oi_change_pct, side.bias)}
+      ${movementLine("Premium", side.interval_premium_change, side.interval_premium_change_pct, side.bias, true)}
+      <div class="position-row">
+        <span>${escHtml(side.positioning || "Insufficient Data")}</span>
+        <b class="${bias}">${escHtml(side.bias || "NEUTRAL")}</b>
+      </div>
+    </section>`;
+}
+
+function renderCombinedSignal(row) {
+  const cls = liveBiasClass(row.net_interpretation);
+  return `
+    <section class="combined-signal ${cls}">
+      <span>COMBINED STRIKE SIGNAL</span>
+      <strong>${escHtml(row.net_interpretation || "NEUTRAL")}</strong>
+      <em>Score ${signedPrice(row.net_score)}</em>
+      <p>${escHtml(strikeExplanation(row))}</p>
+    </section>`;
+}
+
+function strikeExplanation(row) {
+  const callBias = String(row.call?.bias || "NEUTRAL").toUpperCase();
+  const putBias = String(row.put?.bias || "NEUTRAL").toUpperCase();
+  const finalBias = String(row.net_interpretation || "NEUTRAL").toUpperCase();
+  if (finalBias === "BULLISH" && callBias === "BULLISH" && putBias === "BULLISH") {
+    return "Both call and put positioning support bullish pressure.";
+  }
+  if (finalBias === "BEARISH" && callBias === "BEARISH" && putBias === "BEARISH") {
+    return "Both call and put positioning support bearish pressure.";
+  }
+  if (finalBias === "BULLISH") return "Bullish side has stronger weighted positioning at this strike.";
+  if (finalBias === "BEARISH") return "Bearish side has stronger weighted positioning at this strike.";
+  return "Call and put signals are mixed or too small for a clean edge.";
+}
+
+function movementLine(label, value, pct, bias, isPremium = false) {
+  const move = movementDirection(value);
+  const biasCls = liveBiasClass(bias);
+  const width = movementWidth(pct);
+  return `
+    <div class="movement-line ${biasCls}">
+      <div class="movement-top">
+        <span>${escHtml(label)}</span>
+        <strong><i class="${move.cls}">${move.arrow}</i> ${isPremium ? signedPrice(value) : signedFmt(value)} <small>${pctFmt(pct)}</small></strong>
+      </div>
+      <div class="move-bar"><i class="${move.cls}" style="width:${width}%"></i></div>
+    </div>`;
+}
+
+function renderSideDetails(label, side = {}) {
+  return `
+    <div class="side-detail-box">
+      <strong>${escHtml(label)}</strong>
+      ${detailRow("Previous OI", fmtNullable(side.previous_oi))}
+      ${detailRow("Current OI", fmtNullable(side.oi))}
+      ${detailRow("OI Change", signedFmt(side.interval_oi_change))}
+      ${detailRow("OI Change %", pctFmt(side.interval_oi_change_pct))}
+      ${detailRow("Previous Premium", fmtPrice(side.previous_ltp))}
+      ${detailRow("Current Premium", fmtPrice(side.ltp))}
+      ${detailRow("Premium Change", signedPrice(side.interval_premium_change))}
+      ${detailRow("Premium Change %", pctFmt(side.interval_premium_change_pct))}
+      ${detailRow("Position", side.positioning || "-")}
+      ${detailRow("Calculation", side.reason || "-")}
+    </div>`;
+}
+
+function detailRow(label, value) {
+  return `<div><span>${escHtml(label)}</span><b>${escHtml(value ?? "-")}</b></div>`;
+}
+
+function movementDirection(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num === 0) return { cls: "flat", arrow: "→" };
+  return num > 0 ? { cls: "up", arrow: "↑" } : { cls: "down", arrow: "↓" };
+}
+
+function movementWidth(pct) {
+  const num = Math.abs(Number(pct));
+  if (!Number.isFinite(num) || num === 0) return 4;
+  return Math.max(8, Math.min(100, num * 4));
+}
+
+function fmtNullable(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  return fmt(value);
 }
 
 function renderChangeCell(value, pct) {

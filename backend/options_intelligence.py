@@ -274,7 +274,9 @@ def analyze_side(row, previous_row, side, label, weights):
         signal = interpret_position(side, position, strike_weight(label, weights), volume_change > 0, weights)
     return {
         "ltp": round2(ltp),
+        "previous_ltp": round2(previous_ltp) if has_previous else None,
         "oi": round2(oi),
+        "previous_oi": round2(previous_oi) if has_previous else None,
         "exchange_change_oi": row.get(f"{prefix}_exchange_change_oi"),
         "volume": round2(volume),
         "interval_oi_change": round2(oi_change) if has_previous else None,
@@ -284,6 +286,7 @@ def analyze_side(row, previous_row, side, label, weights):
         "volume_change": round2(volume_change) if has_previous else None,
         "positioning": position,
         "bias": signal.directional_bias,
+        "reason": signal.reason,
         "score": round2(signal.bullish_score - signal.bearish_score),
         "_bullish": signal.bullish_score,
         "_bearish": signal.bearish_score,
