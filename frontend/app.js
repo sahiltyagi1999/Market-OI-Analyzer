@@ -1428,7 +1428,6 @@ function renderLiveTopMetrics(analysis = {}, levels = {}, status = {}, quality =
 function renderTimeframeCards(changeWindows = {}, live = {}, trend = {}, day = {}) {
   const items = [
     ["3m", "LIVE ANALYSIS", "LAST 3 MIN", live],
-    ["5m", "LIVE TRACK", "LAST 5 MIN", changeWindows["5m"] || {}],
     ["15m", "TREND ANALYSIS", "LAST 15 MIN", trend],
     ["session", "DAY TRACK", "MARKET OPEN TO NOW", day],
   ];
@@ -1473,12 +1472,12 @@ function renderTimeframeSide(label, side) {
     <div class="tf-side ${cls}">
       <span>${escHtml(label)}</span>
       <strong>${escHtml(side.position)}</strong>
-      <div class="tf-move ${cls}">
+      <div class="tf-move ${side.oiMove.cls}">
         <i>${side.oiMove.arrow}</i>
         <b>${pctFmt(side.oiPct)}</b>
         <small>OI ${signedFmt(side.oiChange)}</small>
       </div>
-      <div class="tf-move ${cls}">
+      <div class="tf-move ${side.premiumMove.cls}">
         <i>${side.premiumMove.arrow}</i>
         <b>${pctFmt(side.premiumPct)}</b>
         <small>Premium ${signedPrice(side.premiumChange)}</small>
@@ -1841,12 +1840,12 @@ function renderStrikeMiniSide(label, side = {}) {
       <strong>${escHtml(side.positioning || "Insufficient Data")}</strong>
       <div class="strike-mini-ltp">LTP ${fmtPrice(side.ltp)}</div>
       <div class="strike-mini-moves">
-        <div>
+        <div class="${oiMove.cls}">
           <span>OI</span>
           <b>${oiMove.arrow} ${signedFmt(side.interval_oi_change)}</b>
           <small>${pctFmt(side.interval_oi_change_pct)}</small>
         </div>
-        <div>
+        <div class="${premiumMove.cls}">
           <span>Premium</span>
           <b>${premiumMove.arrow} ${signedPrice(side.interval_premium_change)}</b>
           <small>${pctFmt(side.interval_premium_change_pct)}</small>

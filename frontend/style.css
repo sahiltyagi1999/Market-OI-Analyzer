@@ -1890,22 +1890,16 @@ code {
 }
 
 .tf-side.bull > strong,
-.tf-side.bull .tf-move b,
-.tf-side.bull .tf-move i,
 .tf-combined.bull strong {
   color: #00d467;
 }
 
 .tf-side.bear > strong,
-.tf-side.bear .tf-move b,
-.tf-side.bear .tf-move i,
 .tf-combined.bear strong {
   color: #ff5a66;
 }
 
 .tf-side.neut > strong,
-.tf-side.neut .tf-move b,
-.tf-side.neut .tf-move i,
 .tf-combined.neut strong {
   color: var(--gold);
 }
@@ -1924,6 +1918,24 @@ code {
 .tf-move i {
   margin-right: 3px;
   font-style: normal;
+}
+
+.tf-move.up b,
+.tf-move.up i,
+.strike-mini-moves .up b {
+  color: #00d467;
+}
+
+.tf-move.down b,
+.tf-move.down i,
+.strike-mini-moves .down b {
+  color: #ff5a66;
+}
+
+.tf-move.flat b,
+.tf-move.flat i,
+.strike-mini-moves .flat b {
+  color: var(--gold);
 }
 
 .tf-move small {
