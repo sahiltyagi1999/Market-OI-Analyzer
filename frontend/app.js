@@ -1364,17 +1364,10 @@ function renderLiveOptions(data) {
         </div>
         <div class="overall-direction ${cls}">${escHtml(analysis.direction || "INSUFFICIENT DATA")}</div>
         <p>${escHtml((analysis.explanations || [])[0] || "Signals are still building from aligned snapshots.")}</p>
-        <div class="overall-meta">
-          <span>Spot ${fmtPrice(analysis.spot)}</span>
-          <span>PCR ${escHtml(analysis.pcr ?? "-")}</span>
-          <span>Support ${levels.support ? Number(levels.support).toLocaleString("en-IN") : "-"}</span>
-          <span>Resistance ${levels.resistance ? Number(levels.resistance).toLocaleString("en-IN") : "-"}</span>
-        </div>
+        ${renderLiveTopMetrics(analysis, levels, status, quality)}
       </section>
 
-      ${renderAnalysisPanel("LIVE ANALYSIS · LAST 3 MIN", live, changeWindows["3m"])}
-      ${renderAnalysisPanel("TREND ANALYSIS · LAST 15 MIN", trend, changeWindows["15m"])}
-      ${renderAnalysisPanel("SESSION ANALYSIS · MARKET OPEN TO NOW", day, changeWindows.session)}
+      ${renderTimeframeCards(changeWindows, live, trend, day)}
 
       <section class="design-panel five-strike-intel">
         <div class="design-panel-head">
@@ -1403,6 +1396,93 @@ function renderLiveOptions(data) {
           ${renderLiveStructure(analysis, snapshot, status, websocket, quality, kiteLabel, kiteCls)}
         </details>
       </section>
+    </div>`;
+}
+
+function renderLiveTopMetrics(analysis = {}, levels = {}, status = {}, quality = {}) {
+  const pcrNum = Number(analysis.pcr);
+  const pcr = Number.isFinite(pcrNum) ? pcrNum.toFixed(2) : "-";
+  const support = levels.support ? Number(levels.support).toLocaleString("en-IN") : "-";
+  const resistance = levels.resistance ? Number(levels.resistance).toLocaleString("en-IN") : "-";
+  const metricItems = [
+    ["Spot", fmtPrice(analysis.spot), analysis.spot_change ? signedPrice(analysis.spot_change) : "Live NIFTY"],
+    ["PCR", pcr, pcr === "-" ? "Unavailable" : pcrNum >= 1 ? "Put OI dominance" : "Call OI dominance"],
+    ["Support", support, "Highest Put OI zone"],
+    ["Resistance", resistance, "Highest Call OI zone"],
+    ["Bull Score", signedPrice(analysis.bullish_score), "Directional weight"],
+    ["Bear Score", signedPrice(analysis.bearish_score), "Directional weight"],
+    ["WebSocket", status.websocket?.connected ? "Connected" : status.websocket?.enabled ? "Reconnecting" : "REST only", quality.status || "Data quality"],
+    ["Last Snapshot", quality.last_successful_snapshot_at ? formatTime(quality.last_successful_snapshot_at) : "-", status.marketState || "Market state"],
+  ];
+  return `
+    <div class="live-top-metrics">
+      ${metricItems.map(([label, value, sub]) => `
+        <div class="live-top-card">
+          <span>${escHtml(label)}</span>
+          <strong>${escHtml(value ?? "-")}</strong>
+          <small>${escHtml(sub || "")}</small>
+        </div>`).join("")}
+    </div>`;
+}
+
+function renderTimeframeCards(changeWindows = {}, live = {}, trend = {}, day = {}) {
+  const items = [
+    ["3m", "LIVE ANALYSIS", "LAST 3 MIN", live],
+    ["5m", "LIVE TRACK", "LAST 5 MIN", changeWindows["5m"] || {}],
+    ["15m", "TREND ANALYSIS", "LAST 15 MIN", trend],
+    ["session", "DAY TRACK", "MARKET OPEN TO NOW", day],
+  ];
+  return `
+    <section class="timeframe-card-grid">
+      ${items.map(([key, title, subtitle, bias]) => renderTimeframeCard(key, title, subtitle, bias, changeWindows[key] || {})).join("")}
+    </section>`;
+}
+
+function renderTimeframeCard(key, title, subtitle, bias = {}, windowData = {}) {
+  const direction = bias.direction || windowData.direction || "INSUFFICIENT DATA";
+  const cls = liveBiasClass(direction);
+  const confidence = Number(bias.confidence || windowData.confidence || 0);
+  const call = aggregateSideSignal(windowData, "call");
+  const put = aggregateSideSignal(windowData, "put");
+  return `
+    <article class="timeframe-card ${cls} ${liveWindowKey === key ? "active" : ""}" role="button" tabindex="0" onclick="setLiveWindow('${key}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setLiveWindow('${key}')}">
+      <span class="tf-active-mark">${liveWindowKey === key ? "Selected" : "View strikes"}</span>
+      <div class="tf-card-head">
+        <div>
+          <strong>${escHtml(title)}</strong>
+          <em>${escHtml(subtitle)}</em>
+        </div>
+        <b>${confidence}%</b>
+      </div>
+      ${!windowData?.available ? `<div class="tf-warn">${escHtml(windowData?.reason || "Need more saved snapshots.")}</div>` : ""}
+      <div class="tf-side-grid">
+        ${renderTimeframeSide("CALL", call)}
+        ${renderTimeframeSide("PUT", put)}
+      </div>
+      <div class="tf-combined ${cls}">
+        <span>COMBINED</span>
+        <strong>${escHtml(direction)}</strong>
+        <p>${escHtml((bias.explanations || [])[0] || bias.what_changed || combinedWindowExplanation(call, put, direction))}</p>
+      </div>
+    </article>`;
+}
+
+function renderTimeframeSide(label, side) {
+  const cls = liveBiasClass(side.bias);
+  return `
+    <div class="tf-side ${cls}">
+      <span>${escHtml(label)}</span>
+      <strong>${escHtml(side.position)}</strong>
+      <div class="tf-move ${cls}">
+        <i>${side.oiMove.arrow}</i>
+        <b>${pctFmt(side.oiPct)}</b>
+        <small>OI ${signedFmt(side.oiChange)}</small>
+      </div>
+      <div class="tf-move ${cls}">
+        <i>${side.premiumMove.arrow}</i>
+        <b>${pctFmt(side.premiumPct)}</b>
+        <small>Premium ${signedPrice(side.premiumChange)}</small>
+      </div>
     </div>`;
 }
 
@@ -1726,20 +1806,13 @@ function renderStrikeCard(row, windowData = {}) {
       <div class="strike-card-head">
         <div>
           <strong>${escHtml(row.label || "")} · ${Number(row.strike).toLocaleString("en-IN")}</strong>
+          ${row.is_atm ? "<span>ATM focus strike</span>" : "<span>Nearby strike</span>"}
         </div>
         <div class="strike-final-pill ${finalCls}">${escHtml(row.net_interpretation || "NEUTRAL")}</div>
       </div>
-      <div class="strike-position-lines">
-        <div>
-          <span>Call</span>
-          <strong class="${liveBiasClass(row.call?.bias)}">${escHtml(row.call?.positioning || "-")}</strong>
-          <em>${renderCompactMove(row.call?.interval_oi_change, row.call?.interval_premium_change_pct)}</em>
-        </div>
-        <div>
-          <span>Put</span>
-          <strong class="${liveBiasClass(row.put?.bias)}">${escHtml(row.put?.positioning || "-")}</strong>
-          <em>${renderCompactMove(row.put?.interval_oi_change, row.put?.interval_premium_change_pct)}</em>
-        </div>
+      <div class="strike-mini-grid">
+        ${renderStrikeMiniSide("CALL", row.call)}
+        ${renderStrikeMiniSide("PUT", row.put)}
       </div>
       <div class="strike-signal-text ${finalCls}">
         <strong>${escHtml(signalHeadline(row.net_interpretation))}</strong>
@@ -1753,6 +1826,33 @@ function renderStrikeCard(row, windowData = {}) {
         </div>
       </details>
     </article>`;
+}
+
+function renderStrikeMiniSide(label, side = {}) {
+  const cls = liveBiasClass(side.bias);
+  const oiMove = movementDirection(side.interval_oi_change);
+  const premiumMove = movementDirection(side.interval_premium_change);
+  return `
+    <section class="strike-mini-side ${cls}">
+      <div class="strike-mini-head">
+        <span>${escHtml(label)}</span>
+        <b>${escHtml(side.bias || "NEUTRAL")}</b>
+      </div>
+      <strong>${escHtml(side.positioning || "Insufficient Data")}</strong>
+      <div class="strike-mini-ltp">LTP ${fmtPrice(side.ltp)}</div>
+      <div class="strike-mini-moves">
+        <div>
+          <span>OI</span>
+          <b>${oiMove.arrow} ${signedFmt(side.interval_oi_change)}</b>
+          <small>${pctFmt(side.interval_oi_change_pct)}</small>
+        </div>
+        <div>
+          <span>Premium</span>
+          <b>${premiumMove.arrow} ${signedPrice(side.interval_premium_change)}</b>
+          <small>${pctFmt(side.interval_premium_change_pct)}</small>
+        </div>
+      </div>
+    </section>`;
 }
 
 function renderSideAnalysis(title, side = {}, sideKey = "") {
