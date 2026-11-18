@@ -1174,6 +1174,16 @@ function formatTime(value) {
   });
 }
 
+function formatShortDate(value) {
+  const date = parseServerDate(value);
+  if (!date) return "-";
+  return date.toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+  });
+}
+
 function escHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -1337,89 +1347,61 @@ function renderLiveOptions(data) {
   const websocket = status.websocket || {};
   const kiteLabel = kiteStatusLabel(status);
   const kiteCls = kiteStatusClass(status);
-  const primaryExplanation = (analysis.explanations || [])[0] || "Signals are still building from aligned 3-minute snapshots.";
   const changeWindows = analysis.change_windows || {};
   if (!changeWindows[liveWindowKey]) liveWindowKey = "3m";
   const selectedWindow = changeWindows[liveWindowKey] || changeWindows["3m"] || {};
+  const selectedRows = selectedWindow.rows?.length ? selectedWindow.rows : analysis.strikes || [];
 
   document.getElementById("liveUpdated").classList.remove("hidden");
   document.getElementById("liveUpdatedAt").textContent = formatTime(analysis.timestamp || snapshot.timestamp);
 
   document.getElementById("liveBody").innerHTML = `
-    <div class="live-grid">
-      <section class="signal-banner ${cls} live-signal market-intel-hero">
-        <div>
-          <span>Overall Market Direction</span>
-          <strong>${escHtml(analysis.direction || "INSUFFICIENT DATA")}</strong>
-          <div class="live-subline">Confidence ${confidence}% · ${escHtml(analysis.market_momentum || "Building")} · ${escHtml(snapshot.expiry || "-")} expiry</div>
-          <p class="market-explain">${escHtml(primaryExplanation)}</p>
+    <div class="live-board">
+      <section class="design-panel overall-panel ${cls}">
+        <div class="design-panel-head">
+          <h2>OVERALL MARKET DIRECTION</h2>
+          <span class="design-pill ${cls}">${confidence}%</span>
         </div>
-        <div class="pcr-box">
-          <span>Spot</span>
-          <strong>${fmtPrice(analysis.spot)}</strong>
+        <div class="overall-direction ${cls}">${escHtml(analysis.direction || "INSUFFICIENT DATA")}</div>
+        <p>${escHtml((analysis.explanations || [])[0] || "Signals are still building from aligned snapshots.")}</p>
+        <div class="overall-meta">
+          <span>Spot ${fmtPrice(analysis.spot)}</span>
+          <span>PCR ${escHtml(analysis.pcr ?? "-")}</span>
+          <span>Support ${levels.support ? Number(levels.support).toLocaleString("en-IN") : "-"}</span>
+          <span>Resistance ${levels.resistance ? Number(levels.resistance).toLocaleString("en-IN") : "-"}</span>
         </div>
       </section>
 
-      <div class="metrics live-metrics">
-        ${liveMetric("Live Bias", live.direction, `${live.confidence || 0}%`, liveBiasClass(live.direction))}
-        ${liveMetric("Trend Bias", trend.direction, `${trend.confidence || 0}%`, liveBiasClass(trend.direction))}
-        ${liveMetric("Day Track", day.direction || "-", `${day.confidence || 0}%`, liveBiasClass(day.direction))}
-        ${liveMetric("Momentum", analysis.market_momentum || "-", "overall", liveBiasClass(analysis.direction))}
-        ${liveMetric("Support", levels.support ? Number(levels.support).toLocaleString("en-IN") : "-", fmt(levels.support_oi), "bull")}
-        ${liveMetric("Resistance", levels.resistance ? Number(levels.resistance).toLocaleString("en-IN") : "-", fmt(levels.resistance_oi), "bear")}
-        ${liveMetric("PCR", analysis.pcr ?? "-", "put/call OI", Number(analysis.pcr) >= 1 ? "bull" : "bear")}
-        ${liveMetric("Data Freshness", quality.status || "Unknown", quality.last_tick_received_at ? "tick seen" : "no tick", kiteDataQualityClass(quality))}
-      </div>
+      ${renderAnalysisPanel("LIVE ANALYSIS · LAST 3 MIN", live, changeWindows["3m"])}
+      ${renderAnalysisPanel("TREND ANALYSIS · LAST 15 MIN", trend, changeWindows["15m"])}
+      ${renderAnalysisPanel("SESSION ANALYSIS · MARKET OPEN TO NOW", day, changeWindows.session)}
 
-      <div class="bias-card-grid">
-        ${renderBiasCard("LIVE BIAS - LAST 3 MINUTES", live, changeWindows["3m"])}
-        ${renderBiasCard("TREND BIAS - LAST 15 MINUTES", trend, changeWindows["15m"])}
-        ${renderBiasCard("DAY TRACK - MARKET OPEN TO NOW", day, changeWindows.session)}
-      </div>
-
-      <section class="panel">
-        <div class="panel-title-row">
+      <section class="design-panel five-strike-intel">
+        <div class="design-panel-head">
           <div>
-            <div class="panel-title">Five-Strike Number Table</div>
-            <div class="window-subtitle">${escHtml(selectedWindow.label || "Last Snapshot")} · ${windowElapsed(selectedWindow)}</div>
+            <h2>FIVE-STRIKE INTELLIGENCE</h2>
+            <p>ATM ${analysis.atm ? Number(analysis.atm).toLocaleString("en-IN") : "-"} · ${formatShortDate(analysis.timestamp || snapshot.timestamp)}</p>
           </div>
-          ${renderLiveWindowSelector(changeWindows)}
-        </div>
-        ${renderWindowSummary(selectedWindow)}
-        ${renderLiveStrikeTable(selectedWindow.rows?.length ? selectedWindow.rows : analysis.strikes || [], selectedWindow)}
-      </section>
-
-      <section class="panel">
-        <div class="panel-title-row">
-          <div>
-            <div class="panel-title">15-Minute Trend Table</div>
-            <div class="window-subtitle">${windowElapsed(changeWindows["15m"] || {})}</div>
+          <div class="window-cluster">
+            ${renderLiveWindowSelector(changeWindows)}
           </div>
         </div>
-        ${renderWindowSummary(changeWindows["15m"] || {})}
-        ${renderLiveStrikeTable(changeWindows["15m"]?.rows || [], changeWindows["15m"] || {})}
+        ${!selectedWindow.available ? `<div class="table-note warn">${escHtml(selectedWindow.reason || "Need more saved snapshots for this window.")}</div>` : ""}
+        ${renderPressureSummary(selectedWindow, selectedRows)}
+        ${renderLiveStrikeTable(selectedRows, selectedWindow)}
       </section>
 
-      <section class="panel">
-        <div class="panel-title">What Is Happening Right Now?</div>
+      <section class="design-panel context-panel">
+        <div class="design-panel-head">
+          <h2>MARKET CONTEXT</h2>
+          <span class="design-pill ${kiteCls}">${escHtml(kiteLabel)}</span>
+        </div>
         ${renderObservationList(analysis.observations || analysis.explanations || [])}
         ${(analysis.conflicts || []).length ? `<div class="conflict-list">${analysis.conflicts.map((item) => `<span>${escHtml(item)}</span>`).join("")}</div>` : ""}
-      </section>
-
-      <div class="split-grid market-split">
-        <section class="panel">
-          <div class="panel-title">Connection & Data Quality</div>
+        <details class="context-details">
+          <summary>Connection & data quality</summary>
           ${renderLiveStructure(analysis, snapshot, status, websocket, quality, kiteLabel, kiteCls)}
-        </section>
-        <section class="panel">
-          <div class="panel-title">Positioning Notes</div>
-          ${renderPositioningNotes(live, trend, day)}
-        </section>
-      </div>
-
-      <section class="panel compact-strength">
-        <div class="panel-title">Normalized Signal Strength</div>
-        ${renderLiveStrength(analysis)}
+        </details>
       </section>
     </div>`;
 }
@@ -1459,6 +1441,131 @@ function renderBiasChangeGrid(change = {}, windowData = {}) {
           <strong>${pctFmt(pct)}</strong>
           <small>${signedFmt(value)}${unit ? ` ${unit}` : ""}</small>
         </div>`).join("")}
+    </div>`;
+}
+
+function renderAnalysisPanel(title, bias = {}, windowData = {}) {
+  const cls = liveBiasClass(bias.direction || windowData.direction);
+  const call = aggregateSideSignal(windowData, "call");
+  const put = aggregateSideSignal(windowData, "put");
+  return `
+    <section class="design-panel live-analysis-card ${cls}">
+      <div class="design-panel-head">
+        <h2>${escHtml(title)}</h2>
+        <span class="design-pill ${cls}">${Number(bias.confidence || windowData.confidence || 0)}%</span>
+      </div>
+      ${!windowData?.available ? `<div class="table-note warn">${escHtml(windowData?.reason || "Need more saved snapshots.")}</div>` : ""}
+      <div class="analysis-two-col">
+        ${renderAnalysisBox("CALL ANALYSIS", call)}
+        ${renderAnalysisBox("PUT ANALYSIS", put)}
+      </div>
+      <div class="combined-direction ${cls}">
+        <span>COMBINED DIRECTION</span>
+        <strong>${escHtml(bias.direction || windowData.direction || "INSUFFICIENT DATA")}</strong>
+        <p>${escHtml((bias.explanations || [])[0] || bias.what_changed || combinedWindowExplanation(call, put, bias.direction || windowData.direction))}</p>
+      </div>
+    </section>`;
+}
+
+function renderAnalysisBox(title, side) {
+  const cls = liveBiasClass(side.bias);
+  return `
+    <div class="analysis-box">
+      <h3>${escHtml(title)}</h3>
+      <span class="design-pill ${cls}">${escHtml(side.bias)}</span>
+      <div class="analysis-sep"></div>
+      <div class="analysis-label">OI CHANGE</div>
+      <div class="analysis-value ${side.oiMove.cls}">${side.oiMove.arrow} ${pctFmt(side.oiPct)}</div>
+      <div class="analysis-label">Premium Change</div>
+      <div class="analysis-value ${side.premiumMove.cls}">${side.premiumMove.arrow} ${pctFmt(side.premiumPct)}</div>
+      <div class="analysis-position ${cls}">${escHtml(side.position)}</div>
+    </div>`;
+}
+
+function aggregateSideSignal(windowData = {}, sideKey = "call") {
+  const change = windowData.change || {};
+  const oiChange = change[`${sideKey}_oi_change`];
+  const premiumChange = change[`${sideKey}_premium_change`];
+  const oiPct = change[`${sideKey}_oi_change_pct`];
+  const premiumPct = change[`${sideKey}_premium_change_pct`];
+  const classified = classifySideMovement(sideKey, oiChange, premiumChange);
+  return {
+    ...classified,
+    oiChange,
+    premiumChange,
+    oiPct,
+    premiumPct,
+    oiMove: movementDirection(oiChange),
+    premiumMove: movementDirection(premiumChange),
+  };
+}
+
+function classifySideMovement(sideKey, oiChange, premiumChange) {
+  const oiSign = Number(oiChange) > 0 ? 1 : Number(oiChange) < 0 ? -1 : 0;
+  const premiumSign = Number(premiumChange) > 0 ? 1 : Number(premiumChange) < 0 ? -1 : 0;
+  if (!oiSign || !premiumSign) {
+    return { position: "Insufficient Data", pressure: "PENDING", bias: "NEUTRAL" };
+  }
+  const position =
+    oiSign > 0 && premiumSign > 0 ? "Long Build-up" :
+    oiSign > 0 && premiumSign < 0 ? "Short Build-up" :
+    oiSign < 0 && premiumSign > 0 ? "Short Covering" :
+    "Long Unwinding";
+  const callMap = {
+    "Long Build-up": "BULLISH",
+    "Short Build-up": "BEARISH",
+    "Short Covering": "BULLISH",
+    "Long Unwinding": "BEARISH",
+  };
+  const putMap = {
+    "Long Build-up": "BEARISH",
+    "Short Build-up": "BULLISH",
+    "Short Covering": "BEARISH",
+    "Long Unwinding": "BULLISH",
+  };
+  const pressure =
+    position === "Long Build-up" ? "BUYING" :
+    position === "Short Build-up" ? "WRITING" :
+    position === "Short Covering" ? "COVERING" :
+    "UNWINDING";
+  return {
+    position,
+    pressure,
+    bias: sideKey === "call" ? callMap[position] : putMap[position],
+  };
+}
+
+function combinedWindowExplanation(call, put, direction) {
+  const finalBias = String(direction || "").toUpperCase();
+  if (finalBias === "BULLISH" && call.bias === "BULLISH" && put.bias === "BULLISH") {
+    return "Both Call and Put positioning indicate bullish pressure.";
+  }
+  if (finalBias === "BEARISH" && call.bias === "BEARISH" && put.bias === "BEARISH") {
+    return "Both Call and Put positioning indicate bearish pressure.";
+  }
+  if (finalBias === "BULLISH") return "Bullish pressure is stronger across the selected window.";
+  if (finalBias === "BEARISH") return "Bearish pressure is stronger across the selected window.";
+  return "Call and Put signals are mixed or still building.";
+}
+
+function renderPressureSummary(windowData = {}, rows = []) {
+  const call = aggregateSideSignal(windowData, "call");
+  const put = aggregateSideSignal(windowData, "put");
+  return `
+    <div class="pressure-summary">
+      ${renderPressureBlock("CALL PRESSURE", call)}
+      ${renderPressureBlock("PUT PRESSURE", put)}
+    </div>`;
+}
+
+function renderPressureBlock(label, side) {
+  const cls = liveBiasClass(side.bias);
+  return `
+    <div class="pressure-block ${cls}">
+      <span>${escHtml(label)}</span>
+      <strong>${escHtml(side.pressure)} <i>${side.premiumMove.arrow}</i></strong>
+      <p>OI ${signedFmt(side.oiChange)}</p>
+      <p>Premium ${pctFmt(side.premiumPct)}</p>
     </div>`;
 }
 
@@ -1607,7 +1714,6 @@ function renderPositioningNotes(live = {}, trend = {}, day = {}) {
 function renderLiveStrikeTable(rows, windowData = {}) {
   if (!rows.length) return '<div class="empty-state">No five-strike rows available.</div>';
   return `
-    ${!windowData.available ? `<div class="table-note warn">${escHtml(windowData.reason || "No saved comparison snapshot for this window; showing current strike values.")}</div>` : ""}
     <div class="strike-card-list">
       ${rows.map((row) => renderStrikeCard(row, windowData)).join("")}
     </div>`;
@@ -1619,15 +1725,25 @@ function renderStrikeCard(row, windowData = {}) {
     <article class="strike-intel-card ${row.is_atm ? "atm-card" : ""} ${finalCls}">
       <div class="strike-card-head">
         <div>
-          <span>${escHtml(row.label || "")}</span>
-          <strong>${Number(row.strike).toLocaleString("en-IN")}</strong>
+          <strong>${escHtml(row.label || "")} · ${Number(row.strike).toLocaleString("en-IN")}</strong>
         </div>
         <div class="strike-final-pill ${finalCls}">${escHtml(row.net_interpretation || "NEUTRAL")}</div>
       </div>
-      <div class="strike-analysis-grid">
-        ${renderSideAnalysis("CALL ANALYSIS", row.call, "call")}
-        ${renderSideAnalysis("PUT ANALYSIS", row.put, "put")}
-        ${renderCombinedSignal(row)}
+      <div class="strike-position-lines">
+        <div>
+          <span>Call</span>
+          <strong class="${liveBiasClass(row.call?.bias)}">${escHtml(row.call?.positioning || "-")}</strong>
+          <em>${renderCompactMove(row.call?.interval_oi_change, row.call?.interval_premium_change_pct)}</em>
+        </div>
+        <div>
+          <span>Put</span>
+          <strong class="${liveBiasClass(row.put?.bias)}">${escHtml(row.put?.positioning || "-")}</strong>
+          <em>${renderCompactMove(row.put?.interval_oi_change, row.put?.interval_premium_change_pct)}</em>
+        </div>
+      </div>
+      <div class="strike-signal-text ${finalCls}">
+        <strong>${escHtml(signalHeadline(row.net_interpretation))}</strong>
+        <p>${escHtml(strikeExplanation(row))}</p>
       </div>
       <details class="strike-expand">
         <summary>Directional calculation</summary>
@@ -1655,6 +1771,17 @@ function renderSideAnalysis(title, side = {}, sideKey = "") {
         <b class="${bias}">${escHtml(side.bias || "NEUTRAL")}</b>
       </div>
     </section>`;
+}
+
+function signalHeadline(direction) {
+  const d = String(direction || "").toUpperCase();
+  if (d === "BULLISH") return "Bullish pressure";
+  if (d === "BEARISH") return "Bearish pressure";
+  return "Mixed pressure";
+}
+
+function renderCompactMove(oiChange, premiumPct) {
+  return `OI ${signedFmt(oiChange)} · Premium ${pctFmt(premiumPct)}`;
 }
 
 function renderCombinedSignal(row) {
@@ -1686,14 +1813,12 @@ function strikeExplanation(row) {
 function movementLine(label, value, pct, bias, isPremium = false) {
   const move = movementDirection(value);
   const biasCls = liveBiasClass(bias);
-  const width = movementWidth(pct);
   return `
     <div class="movement-line ${biasCls}">
       <div class="movement-top">
         <span>${escHtml(label)}</span>
         <strong><i class="${move.cls}">${move.arrow}</i> ${isPremium ? signedPrice(value) : signedFmt(value)} <small>${pctFmt(pct)}</small></strong>
       </div>
-      <div class="move-bar"><i class="${move.cls}" style="width:${width}%"></i></div>
     </div>`;
 }
 
@@ -1722,12 +1847,6 @@ function movementDirection(value) {
   const num = Number(value);
   if (!Number.isFinite(num) || num === 0) return { cls: "flat", arrow: "→" };
   return num > 0 ? { cls: "up", arrow: "↑" } : { cls: "down", arrow: "↓" };
-}
-
-function movementWidth(pct) {
-  const num = Math.abs(Number(pct));
-  if (!Number.isFinite(num) || num === 0) return 4;
-  return Math.max(8, Math.min(100, num * 4));
 }
 
 function fmtNullable(value) {
