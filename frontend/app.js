@@ -1348,7 +1348,7 @@ function renderLiveOptions(data) {
   const kiteLabel = kiteStatusLabel(status);
   const kiteCls = kiteStatusClass(status);
   const changeWindows = analysis.change_windows || {};
-  if (!changeWindows[liveWindowKey]) liveWindowKey = "3m";
+  if (!["3m", "15m", "session"].includes(liveWindowKey) || !changeWindows[liveWindowKey]) liveWindowKey = "3m";
   const selectedWindow = changeWindows[liveWindowKey] || changeWindows["3m"] || {};
   const selectedRows = selectedWindow.rows?.length ? selectedWindow.rows : analysis.strikes || [];
 
@@ -1404,20 +1404,22 @@ function renderLiveTopMetrics(analysis = {}, levels = {}, status = {}, quality =
   const pcr = Number.isFinite(pcrNum) ? pcrNum.toFixed(2) : "-";
   const support = levels.support ? Number(levels.support).toLocaleString("en-IN") : "-";
   const resistance = levels.resistance ? Number(levels.resistance).toLocaleString("en-IN") : "-";
+  const wsConnected = Boolean(status.websocket?.connected);
+  const wsEnabled = Boolean(status.websocket?.enabled);
   const metricItems = [
-    ["Spot", fmtPrice(analysis.spot), analysis.spot_change ? signedPrice(analysis.spot_change) : "Live NIFTY"],
-    ["PCR", pcr, pcr === "-" ? "Unavailable" : pcrNum >= 1 ? "Put OI dominance" : "Call OI dominance"],
-    ["Support", support, "Highest Put OI zone"],
-    ["Resistance", resistance, "Highest Call OI zone"],
-    ["Bull Score", signedPrice(analysis.bullish_score), "Directional weight"],
-    ["Bear Score", signedPrice(analysis.bearish_score), "Directional weight"],
-    ["WebSocket", status.websocket?.connected ? "Connected" : status.websocket?.enabled ? "Reconnecting" : "REST only", quality.status || "Data quality"],
-    ["Last Snapshot", quality.last_successful_snapshot_at ? formatTime(quality.last_successful_snapshot_at) : "-", status.marketState || "Market state"],
+    ["Spot", fmtPrice(analysis.spot), analysis.spot_change ? signedPrice(analysis.spot_change) : "Live NIFTY", changeClass(analysis.spot_change)],
+    ["PCR", pcr, pcr === "-" ? "Unavailable" : pcrNum >= 1 ? "Put OI dominance" : "Call OI dominance", pcr === "-" ? "neut" : pcrNum >= 1 ? "bull" : "bear"],
+    ["Support", support, "Highest Put OI zone", "bull"],
+    ["Resistance", resistance, "Highest Call OI zone", "bear"],
+    ["Bull Score", signedPrice(analysis.bullish_score), "Directional weight", "bull"],
+    ["Bear Score", signedPrice(analysis.bearish_score), "Directional weight", "bear"],
+    ["WebSocket", wsConnected ? "Connected" : wsEnabled ? "Reconnecting" : "REST only", quality.status || "Data quality", wsConnected ? "bull" : wsEnabled ? "neut" : "bear"],
+    ["Last Snapshot", quality.last_successful_snapshot_at ? formatTime(quality.last_successful_snapshot_at) : "-", status.marketState || "Market state", quality.last_successful_snapshot_at ? "bull" : "neut"],
   ];
   return `
     <div class="live-top-metrics">
-      ${metricItems.map(([label, value, sub]) => `
-        <div class="live-top-card">
+      ${metricItems.map(([label, value, sub, cls]) => `
+        <div class="live-top-card ${cls}">
           <span>${escHtml(label)}</span>
           <strong>${escHtml(value ?? "-")}</strong>
           <small>${escHtml(sub || "")}</small>

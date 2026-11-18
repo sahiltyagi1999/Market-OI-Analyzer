@@ -1600,7 +1600,7 @@ code {
 
 .design-panel {
   padding: clamp(18px, 1.7vw, 28px);
-  border: 1px solid #242424;
+  border: 1px solid rgba(245, 197, 24, 0.34);
   border-radius: 18px;
   background: #000000;
 }
@@ -1728,9 +1728,21 @@ code {
   align-content: center;
   gap: 6px;
   padding: 14px 16px;
-  border: 1px solid #242424;
+  border: 1px solid rgba(245, 197, 24, 0.28);
   border-radius: 14px;
   background: #030303;
+}
+
+.live-top-card.bull {
+  border-color: rgba(0, 210, 99, 0.35);
+}
+
+.live-top-card.bear {
+  border-color: rgba(255, 83, 97, 0.38);
+}
+
+.live-top-card.neut {
+  border-color: rgba(245, 197, 24, 0.42);
 }
 
 .live-top-card span,
@@ -1754,6 +1766,18 @@ code {
   line-height: 1.1;
 }
 
+.live-top-card.bull strong {
+  color: #00d467;
+}
+
+.live-top-card.bear strong {
+  color: #ff5a66;
+}
+
+.live-top-card.neut strong {
+  color: var(--gold);
+}
+
 .live-top-card small {
   color: #8c8c8c;
   font-size: 0.78rem;
@@ -1762,7 +1786,7 @@ code {
 
 .timeframe-card-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -1774,7 +1798,7 @@ code {
   min-width: 0;
   min-height: 100%;
   padding: clamp(16px, 1.35vw, 22px);
-  border: 1px solid #242424;
+  border: 1px solid rgba(245, 197, 24, 0.32);
   border-radius: 18px;
   background: #000000;
   color: #f2f2f2;
@@ -1857,7 +1881,7 @@ code {
 
 .tf-warn {
   padding: 9px 10px;
-  border: 1px dashed #2a2a2a;
+  border: 1px dashed rgba(245, 197, 24, 0.36);
   border-radius: 10px;
   color: var(--gold);
   background: #030303;
@@ -1874,7 +1898,7 @@ code {
 .tf-side {
   min-width: 0;
   padding: 13px;
-  border: 1px solid #202020;
+  border: 1px solid rgba(245, 197, 24, 0.24);
   border-radius: 14px;
   background: #030303;
 }
@@ -1945,7 +1969,7 @@ code {
 
 .tf-combined {
   padding-top: 14px;
-  border-top: 1px solid #111111;
+  border-top: 1px solid rgba(245, 197, 24, 0.28);
 }
 
 .tf-combined strong {
@@ -2782,14 +2806,14 @@ code {
 
 .strike-intel-card {
   padding: clamp(18px, 1.6vw, 26px);
-  border: 1px solid #262626;
+  border: 1px solid rgba(245, 197, 24, 0.32);
   border-radius: 16px;
   background: #000000;
 }
 
 .strike-intel-card.atm-card {
-  border-color: #2d2d2d;
-  box-shadow: none;
+  border-color: rgba(245, 197, 24, 0.62);
+  box-shadow: 0 0 0 1px rgba(245, 197, 24, 0.08), 0 0 24px rgba(245, 197, 24, 0.08);
 }
 
 .strike-card-head {
@@ -2843,7 +2867,7 @@ code {
 
 .strike-signal-text {
   padding-top: 24px;
-  border-top: 1px solid #111111;
+  border-top: 1px solid rgba(245, 197, 24, 0.28);
 }
 
 .strike-signal-text strong {
@@ -2909,7 +2933,7 @@ code {
   gap: 10px;
   min-width: 0;
   padding: 12px;
-  border: 1px solid #202020;
+  border: 1px solid rgba(245, 197, 24, 0.24);
   border-radius: 14px;
   background: #030303;
 }
@@ -2956,7 +2980,7 @@ code {
   display: grid;
   gap: 2px;
   padding-top: 8px;
-  border-top: 1px solid #111111;
+  border-top: 1px solid rgba(245, 197, 24, 0.22);
 }
 
 .strike-mini-moves b {
@@ -3351,7 +3375,7 @@ html.bright-mode .calc-grid span {
   }
 
   .timeframe-card-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
