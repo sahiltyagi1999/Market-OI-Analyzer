@@ -3003,6 +3003,51 @@ code {
   font-size: 1.25rem;
 }
 
+.five-strike-intel .strike-card-list {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
+}
+
+.five-strike-intel .strike-intel-card {
+  overflow: hidden;
+}
+
+.five-strike-intel .strike-intel-card.atm-card {
+  grid-column: 1 / -1;
+}
+
+.five-strike-intel .strike-intel-card.atm-card .strike-mini-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.five-strike-intel .strike-expand {
+  overflow: hidden;
+}
+
+.five-strike-intel .strike-detail-grid {
+  grid-template-columns: 1fr;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.five-strike-intel .side-detail-box {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.five-strike-intel .side-detail-box div {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.72fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.five-strike-intel .side-detail-box b {
+  max-width: none;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
 .strike-expand summary,
 .context-details summary {
   cursor: pointer;
@@ -3474,6 +3519,10 @@ html.bright-mode .calc-grid span {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .five-strike-intel .strike-card-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .strike-position-lines div {
     grid-template-columns: minmax(60px, 0.7fr) minmax(160px, 1fr);
   }
@@ -3560,6 +3609,7 @@ html.bright-mode .calc-grid span {
   .live-top-metrics,
   .timeframe-card-grid,
   .strike-card-list,
+  .five-strike-intel .strike-card-list,
   .strike-mini-grid,
   .tf-side-grid {
     grid-template-columns: 1fr;
