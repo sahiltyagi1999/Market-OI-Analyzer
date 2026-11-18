@@ -132,9 +132,9 @@ button {
 }
 
 .app-shell {
-  width: min(1440px, 100%);
+  width: min(1760px, 100%);
   margin: 0 auto;
-  padding: 18px 24px 40px;
+  padding: 8px clamp(16px, 3vw, 42px) 40px;
 }
 
 .gold {
@@ -1593,12 +1593,13 @@ code {
 .live-board {
   display: grid;
   gap: 16px;
-  max-width: 980px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
 }
 
 .design-panel {
-  padding: 16px;
+  padding: clamp(18px, 1.7vw, 28px);
   border: 1px solid #242424;
   border-radius: 18px;
   background: #000000;
@@ -1717,12 +1718,12 @@ code {
 .analysis-two-col {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: clamp(14px, 1.4vw, 24px);
 }
 
 .analysis-box {
-  min-height: 310px;
-  padding: 22px 16px 14px;
+  min-height: 260px;
+  padding: clamp(18px, 1.7vw, 28px);
   border: 1px solid #262626;
   border-radius: 16px;
   background: #000000;
@@ -1808,7 +1809,7 @@ code {
 .pressure-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: clamp(18px, 4vw, 96px);
   margin: 6px 0 24px;
 }
 
@@ -2486,7 +2487,7 @@ code {
 }
 
 .five-strike-intel {
-  padding: 20px 16px 16px;
+  padding: clamp(18px, 1.7vw, 28px);
 }
 
 .five-strike-intel .design-panel-head {
@@ -2533,7 +2534,7 @@ code {
 }
 
 .strike-intel-card {
-  padding: 20px 16px 15px;
+  padding: clamp(18px, 1.6vw, 26px);
   border: 1px solid #262626;
   border-radius: 16px;
   background: #000000;
@@ -2570,9 +2571,9 @@ code {
 
 .strike-position-lines div {
   display: grid;
-  grid-template-columns: minmax(70px, 1fr) minmax(180px, auto) minmax(170px, auto);
+  grid-template-columns: minmax(70px, 0.65fr) minmax(220px, 1fr) minmax(230px, 0.8fr);
   align-items: center;
-  gap: 14px;
+  gap: clamp(14px, 2vw, 34px);
 }
 
 .strike-position-lines span {
@@ -2980,6 +2981,12 @@ html.bright-mode .calc-grid span {
 
 /* ---------- Responsive ---------- */
 
+@media (max-width: 1280px) {
+  .app-shell {
+    width: min(1440px, 100%);
+  }
+}
+
 @media (max-width: 1100px) {
   .news-summary {
     grid-template-columns: 1fr;
@@ -3003,9 +3010,8 @@ html.bright-mode .calc-grid span {
     min-height: auto;
   }
 
-  .analysis-two-col,
-  .pressure-summary {
-    grid-template-columns: 1fr;
+  .analysis-two-col {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .live-error-grid {
@@ -3063,6 +3069,11 @@ html.bright-mode .calc-grid span {
     grid-template-columns: 1fr;
   }
 
+  .analysis-two-col,
+  .pressure-summary {
+    grid-template-columns: 1fr;
+  }
+
   .strike-position-lines div {
     grid-template-columns: minmax(60px, 0.7fr) minmax(160px, 1fr);
   }
@@ -3080,6 +3091,7 @@ html.bright-mode .calc-grid span {
 @media (max-width: 680px) {
   .app-shell {
     padding: 12px 14px 32px;
+    width: 100%;
   }
 
   .login-grid {
