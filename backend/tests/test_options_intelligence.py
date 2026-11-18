@@ -115,6 +115,8 @@ class OptionsIntelligenceTest(unittest.TestCase):
         self.assertEqual(result["trend_bias"]["direction"], "BULLISH")
         self.assertEqual(result["trend_bias"]["agreement_with_live"], "Conflicts")
         self.assertEqual(result["direction"], "MIXED")
+        self.assertEqual(result["day_trend"]["direction"], "BULLISH")
+        self.assertEqual(result["day_trend"]["interval_count"], 4)
 
 
 if __name__ == "__main__":

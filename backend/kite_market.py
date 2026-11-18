@@ -749,13 +749,14 @@ class KiteMarketService:
             raise KiteApiError("Could not fetch NIFTY 50 spot quote from Kite.")
         return quote
 
-    def build_live_snapshot(self, expiry=None, force=False):
+    def build_live_snapshot(self, expiry=None, force=False, history_override=None):
         with self._lock:
             if (
                 self._last_snapshot
                 and not force
                 and time.time() - self._last_snapshot_at < self.snapshot_seconds
             ):
+                self._last_snapshot["cached"] = True
                 return self._last_snapshot
 
         spot_quote = self.spot_quote()
@@ -851,13 +852,14 @@ class KiteMarketService:
         }
 
         with self._lock:
-            history = list(self._history)
+            history = list(history_override) if history_override is not None else list(self._history)
             status = self.status()
-            analysis = analyze_options_market(snapshot, history, self.weights, status)
+            analysis = analyze_options_market(snapshot, history, self.weights, status, day_history=history)
             snapshot["levels"] = analysis.get("support_resistance")
             result = {
                 "snapshot": snapshot,
                 "analysis": analysis,
+                "cached": False,
             }
             self._history.append(snapshot)
             self._last_snapshot = result

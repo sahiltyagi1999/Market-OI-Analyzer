@@ -424,6 +424,89 @@ def aggregate_trend(history, weights=None):
     }
 
 
+def aggregate_day_trend(history, weights=None):
+    weights = weights or DEFAULT_WEIGHTS
+    snapshots = list(history or [])
+    if len(snapshots) < 2:
+        return {
+            "direction": "INSUFFICIENT DATA",
+            "confidence": 0,
+            "bullish_score": 0,
+            "bearish_score": 0,
+            "interval_count": 0,
+            "trend_consistency": "Need more snapshots",
+            "momentum": "Building",
+            "dominant_positioning": "Insufficient data",
+            "spot_change": 0,
+            "buyers_vs_sellers": "Pending",
+            "explanations": ["Day trend starts after at least two saved 3-minute snapshots."],
+        }
+    intervals = []
+    bullish = bearish = observations = 0.0
+    directions = []
+    positioning = Counter()
+    net_abs = []
+    for previous, current in zip(snapshots, snapshots[1:]):
+        interval = build_interval_analysis(current, previous, weights)
+        intervals.append(interval)
+        bullish += safe_num(interval.get("bullish_score"))
+        bearish += safe_num(interval.get("bearish_score"))
+        observations += safe_num(interval.get("observations"))
+        direction = interval.get("direction")
+        if direction in ACTIVE_DIRECTIONS:
+            directions.append(direction)
+        net_abs.append(abs(safe_num(interval.get("bullish_score")) - safe_num(interval.get("bearish_score"))))
+        for row in interval.get("rows") or []:
+            for side in ("call", "put"):
+                pos = (row.get(side) or {}).get("positioning")
+                if pos and pos not in {"Neutral", "Insufficient Data"}:
+                    positioning[pos] += 1
+    direction, confidence = normalized_bias(bullish, bearish, observations, min_total=3.0)
+    if directions:
+        dominant = Counter(directions).most_common(1)[0]
+        consistency = f"{round((dominant[1] / len(directions)) * 100)}% {dominant[0].lower()} intervals"
+    else:
+        consistency = "Signals are balanced"
+    recent = net_abs[-3:] if len(net_abs) >= 3 else net_abs
+    early = net_abs[:3] if len(net_abs) >= 3 else net_abs
+    recent_strength = sum(recent) / len(recent) if recent else 0
+    early_strength = sum(early) / len(early) if early else 0
+    momentum = "Strengthening" if recent_strength > early_strength * 1.15 else "Weakening" if recent_strength < early_strength * 0.85 else "Stable"
+    first_spot = safe_num(snapshots[0].get("spot"))
+    last_spot = safe_num(snapshots[-1].get("spot"))
+    spot_change = last_spot - first_spot if first_spot and last_spot else 0
+    if direction == "BULLISH":
+        control = "Buyers gaining control"
+    elif direction == "BEARISH":
+        control = "Sellers gaining control"
+    elif direction == "NEUTRAL":
+        control = "Control balanced"
+    else:
+        control = "Pending"
+    dominant_positioning = positioning.most_common(1)[0][0] if positioning else "Neutral"
+    explanations = []
+    if direction in ACTIVE_DIRECTIONS:
+        explanations.append(f"Since market open, day trend is {direction.lower()} with {consistency}.")
+    explanations.append(f"Session momentum is {momentum.lower()} across {len(intervals)} saved intervals.")
+    if spot_change:
+        explanations.append(f"NIFTY is {'up' if spot_change > 0 else 'down'} {abs(spot_change):.2f} from the first saved snapshot.")
+    return {
+        "direction": direction,
+        "confidence": confidence,
+        "bullish_score": round2(bullish),
+        "bearish_score": round2(bearish),
+        "interval_count": len(intervals),
+        "trend_consistency": consistency,
+        "momentum": momentum,
+        "dominant_positioning": dominant_positioning,
+        "spot_change": round2(spot_change),
+        "buyers_vs_sellers": control,
+        "first_snapshot_at": snapshots[0].get("timestamp"),
+        "last_snapshot_at": snapshots[-1].get("timestamp"),
+        "explanations": explanations[:4],
+    }
+
+
 def compact_intervals(intervals):
     return [{
         "direction": item.get("direction"),
@@ -625,7 +708,7 @@ def observations(live, trend, overall, levels, events):
     return unique[:5] or ["Signals are still building; wait for aligned OI and premium confirmation."]
 
 
-def analyze_options_market(current_snapshot, history=None, config=None, status=None):
+def analyze_options_market(current_snapshot, history=None, config=None, status=None, day_history=None):
     weights = merge_weights(config)
     history = list(history or [])
     previous = history[-1] if history else None
@@ -639,6 +722,7 @@ def analyze_options_market(current_snapshot, history=None, config=None, status=N
             "error": "No option-chain rows available.",
             "live_bias": {"direction": "INSUFFICIENT DATA", "confidence": 0},
             "trend_bias": {"direction": "INSUFFICIENT DATA", "confidence": 0},
+            "day_trend": {"direction": "INSUFFICIENT DATA", "confidence": 0},
             "overall_bias": {"direction": "INSUFFICIENT DATA", "confidence": 0},
             "strikes": [],
         }
@@ -660,6 +744,8 @@ def analyze_options_market(current_snapshot, history=None, config=None, status=N
     live["bearish_score"] = interval.get("bearish_score")
     trend_window = (history + [snapshot])[-5:]
     trend = aggregate_trend(trend_window, weights)
+    day_snapshots = (list(day_history) if day_history is not None else history) + [snapshot]
+    day_trend = aggregate_day_trend(day_snapshots, weights)
     if live["direction"] in ACTIVE_DIRECTIONS and trend["direction"] in ACTIVE_DIRECTIONS:
         trend["agreement_with_live"] = "Agrees" if live["direction"] == trend["direction"] else "Conflicts"
     else:
@@ -691,6 +777,7 @@ def analyze_options_market(current_snapshot, history=None, config=None, status=N
         "market_momentum": momentum,
         "live_bias": live,
         "trend_bias": trend,
+        "day_trend": day_trend,
         "overall_bias": overall,
         "bullish_score": overall["bullish_score"],
         "bearish_score": overall["bearish_score"],

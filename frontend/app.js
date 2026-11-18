@@ -1304,6 +1304,7 @@ function renderLiveOptions(data) {
   const confidence = Number(analysis.confidence) || 0;
   const live = analysis.live_bias || {};
   const trend = analysis.trend_bias || {};
+  const day = analysis.day_trend || {};
   const levels = analysis.support_resistance || {};
   const quality = analysis.data_quality || {};
   const websocket = status.websocket || {};
@@ -1332,11 +1333,11 @@ function renderLiveOptions(data) {
       <div class="metrics live-metrics">
         ${liveMetric("Live Bias", live.direction, `${live.confidence || 0}%`, liveBiasClass(live.direction))}
         ${liveMetric("Trend Bias", trend.direction, `${trend.confidence || 0}%`, liveBiasClass(trend.direction))}
+        ${liveMetric("Day Track", day.direction || "-", `${day.confidence || 0}%`, liveBiasClass(day.direction))}
         ${liveMetric("Momentum", analysis.market_momentum || "-", "overall", liveBiasClass(analysis.direction))}
         ${liveMetric("Support", levels.support ? Number(levels.support).toLocaleString("en-IN") : "-", fmt(levels.support_oi), "bull")}
         ${liveMetric("Resistance", levels.resistance ? Number(levels.resistance).toLocaleString("en-IN") : "-", fmt(levels.resistance_oi), "bear")}
         ${liveMetric("PCR", analysis.pcr ?? "-", "put/call OI", Number(analysis.pcr) >= 1 ? "bull" : "bear")}
-        ${liveMetric("Max Pain", analysis.max_pain ? Number(analysis.max_pain).toLocaleString("en-IN") : "-", "strike", "warn")}
         ${liveMetric("Data Freshness", quality.status || "Unknown", quality.last_tick_received_at ? "tick seen" : "no tick", kiteDataQualityClass(quality))}
       </div>
 
@@ -1354,6 +1355,13 @@ function renderLiveOptions(data) {
           ["Dominant Positioning", trend.dominant_positioning || "-"],
           ["Live vs Trend", trend.agreement_with_live || "-"],
           ["Interpretation", trend.explanations?.[0] || "Need five aligned snapshots for full trend context."],
+        ])}
+        ${renderBiasCard("DAY TRACK - MARKET OPEN TO NOW", day, [
+          ["Control", day.buyers_vs_sellers || "Pending"],
+          ["Session Consistency", day.trend_consistency || "-"],
+          ["Session Momentum", day.momentum || "-"],
+          ["Spot Since First Snapshot", signedPrice(day.spot_change)],
+          ["Saved Intervals", day.interval_count ?? 0],
         ])}
       </div>
 

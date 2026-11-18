@@ -18,7 +18,7 @@ import requests
 from bson import ObjectId
 from flask import Flask, jsonify, redirect, request
 from flask_cors import CORS
-from pymongo import MongoClient, DESCENDING
+from pymongo import ASCENDING, MongoClient, DESCENDING
 
 
 def load_env_file(path):
@@ -47,6 +47,7 @@ APP_NAME = "banknifty-oi-analyzer"
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-6-luna")
 TOKEN_TTL_SECONDS = int(os.environ.get("TOKEN_TTL_SECONDS", str(60 * 60 * 12)))
 MAX_ROWS_FOR_AI = int(os.environ.get("MAX_ROWS_FOR_AI", "12"))
+IST = timezone(timedelta(hours=5, minutes=30))
 LOCAL_FRONTEND_ORIGINS = {
     "http://localhost:8080",
     "http://127.0.0.1:8080",
@@ -63,6 +64,17 @@ def get_allowed_origins():
     origins = {origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()}
     origins.update(LOCAL_FRONTEND_ORIGINS)
     return sorted(origins)
+
+
+def is_origin_allowed(origin):
+    if not origin:
+        return False
+    if os.environ.get("CORS_ALLOW_ALL", "true").strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+    allowed = get_allowed_origins()
+    if allowed == "*":
+        return True
+    return origin.rstrip("/") in allowed
 
 
 app = Flask(__name__)
@@ -82,16 +94,38 @@ def add_no_cache_headers(response):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+        origin = request.headers.get("Origin")
+        if origin and is_origin_allowed(origin):
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Vary"] = "Origin"
+        elif get_allowed_origins() == "*":
+            response.headers.setdefault("Access-Control-Allow-Origin", "*")
+        response.headers.setdefault("Access-Control-Allow-Headers", "Authorization, Content-Type")
+        response.headers.setdefault("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
     return response
 
 
 mongo_client = None
 analyses_collection = None
+live_snapshots_collection = None
 if os.environ.get("MONGO_URI"):
     mongo_client = MongoClient(os.environ["MONGO_URI"])
     db = mongo_client[os.environ.get("MONGO_DB_NAME", "oi_analyzer")]
     analyses_collection = db["analyses"]
     analyses_collection.create_index([("username", 1), ("created_at", DESCENDING)])
+    live_snapshots_collection = db["live_snapshots"]
+    live_snapshots_collection.create_index([
+        ("username", ASCENDING),
+        ("instrument", ASCENDING),
+        ("trading_day", ASCENDING),
+        ("bucket", ASCENDING),
+    ], unique=True)
+    live_snapshots_collection.create_index([
+        ("username", ASCENDING),
+        ("instrument", ASCENDING),
+        ("trading_day", ASCENDING),
+        ("timestamp", ASCENDING),
+    ])
 
 
 @app.get("/health")
@@ -216,6 +250,90 @@ def live_options_status():
     return jsonify({"success": True, "status": market_service.status()})
 
 
+def parse_iso_datetime(value):
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        text = str(value or "").strip()
+        if not text:
+            parsed = datetime.now(timezone.utc)
+        else:
+            try:
+                parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            except ValueError:
+                parsed = datetime.now(timezone.utc)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def live_trading_day(value=None):
+    return parse_iso_datetime(value).astimezone(IST).date().isoformat()
+
+
+def live_snapshot_bucket(value, seconds=None):
+    seconds = seconds or getattr(market_service, "snapshot_seconds", 180) or 180
+    timestamp = int(parse_iso_datetime(value).timestamp())
+    return timestamp - (timestamp % int(seconds))
+
+
+def load_live_snapshot_history(username, instrument="NIFTY", trading_day=None, limit=180):
+    if live_snapshots_collection is None:
+        return None
+    trading_day = trading_day or live_trading_day()
+    docs = live_snapshots_collection.find({
+        "username": username,
+        "instrument": instrument,
+        "trading_day": trading_day,
+    }).sort("timestamp", ASCENDING).limit(limit)
+    return [doc.get("snapshot") for doc in docs if doc.get("snapshot")]
+
+
+def save_live_snapshot(username, payload):
+    if live_snapshots_collection is None:
+        return {"saved": False, "reason": "mongo_not_configured"}
+    snapshot = payload.get("snapshot") or {}
+    analysis = payload.get("analysis") or {}
+    status = payload.get("status") or {}
+    timestamp = snapshot.get("timestamp") or analysis.get("timestamp") or datetime.now(timezone.utc).isoformat()
+    instrument = snapshot.get("instrument") or analysis.get("instrument") or "NIFTY"
+    trading_day = live_trading_day(timestamp)
+    bucket = live_snapshot_bucket(timestamp)
+    status_doc = {
+        key: status.get(key)
+        for key in (
+            "authState",
+            "authenticated",
+            "marketState",
+            "last_successful_connection_at",
+            "last_snapshot_at",
+            "websocket",
+        )
+    }
+    doc = {
+        "username": username,
+        "instrument": instrument,
+        "trading_day": trading_day,
+        "bucket": bucket,
+        "timestamp": parse_iso_datetime(timestamp),
+        "created_at": datetime.now(timezone.utc),
+        "snapshot": snapshot,
+        "analysis": analysis,
+        "status": status_doc,
+    }
+    live_snapshots_collection.update_one(
+        {
+            "username": username,
+            "instrument": instrument,
+            "trading_day": trading_day,
+            "bucket": bucket,
+        },
+        {"$set": doc},
+        upsert=True,
+    )
+    return {"saved": True, "trading_day": trading_day, "bucket": bucket}
+
+
 @app.get("/api/live-options/snapshot")
 def live_options_snapshot():
     username = require_user()
@@ -225,7 +343,12 @@ def live_options_snapshot():
     expiry = request.args.get("expiry") or None
     force = request.args.get("refresh") in {"1", "true", "yes"}
     try:
-        payload = market_service.build_live_snapshot(expiry=expiry, force=force)
+        history = load_live_snapshot_history(username, "NIFTY")
+        payload = market_service.build_live_snapshot(expiry=expiry, force=force, history_override=history)
+        if not payload.get("cached"):
+            payload["storage"] = save_live_snapshot(username, payload)
+        else:
+            payload["storage"] = {"saved": False, "reason": "cached_snapshot"}
         payload["success"] = True
         return jsonify(payload)
     except KiteConfigError as exc:
