@@ -1372,14 +1372,15 @@ function renderLiveOptions(data) {
       <section class="design-panel five-strike-intel">
         <div class="design-panel-head">
           <div>
-            <h2>FIVE-STRIKE INTELLIGENCE</h2>
-            <p>ATM ${analysis.atm ? Number(analysis.atm).toLocaleString("en-IN") : "-"} · ${formatShortDate(analysis.timestamp || snapshot.timestamp)}</p>
+            <h2>FIVE STRIKE INTELLIGENCE</h2>
+            <p>ATM ${analysis.atm ? Number(analysis.atm).toLocaleString("en-IN") : "-"} &middot; ${windowElapsed(selectedWindow)} &middot; ${formatShortDate(analysis.timestamp || snapshot.timestamp)}</p>
           </div>
           <div class="window-cluster">
             ${renderLiveWindowSelector(changeWindows)}
           </div>
         </div>
         ${!selectedWindow.available ? `<div class="table-note warn">${escHtml(selectedWindow.reason || "Need more saved snapshots for this window.")}</div>` : ""}
+        ${renderWindowBrief(selectedWindow, selectedRows)}
         ${renderPressureSummary(selectedWindow, selectedRows)}
         ${renderLiveStrikeTable(selectedRows, selectedWindow)}
       </section>
@@ -1632,10 +1633,59 @@ function combinedWindowExplanation(call, put, direction) {
 function renderPressureSummary(windowData = {}, rows = []) {
   const call = aggregateSideSignal(windowData, "call");
   const put = aggregateSideSignal(windowData, "put");
+  const direction = windowData.direction || "INSUFFICIENT DATA";
+  const cls = liveBiasClass(direction);
+  const confidence = Number(windowData.confidence) || 0;
   return `
     <div class="pressure-summary">
+      <div class="pressure-block combined ${cls}">
+        <span>WINDOW VERDICT</span>
+        <strong>${escHtml(direction)}</strong>
+        <p>${confidence}% confidence</p>
+        <p>${escHtml(combinedWindowExplanation(call, put, direction))}</p>
+      </div>
       ${renderPressureBlock("CALL PRESSURE", call)}
       ${renderPressureBlock("PUT PRESSURE", put)}
+    </div>`;
+}
+
+function renderWindowBrief(windowData = {}, rows = []) {
+  const direction = windowData.direction || "INSUFFICIENT DATA";
+  const cls = liveBiasClass(direction);
+  const confidence = Number(windowData.confidence) || 0;
+  const countByBias = rows.reduce((acc, row) => {
+    const key = liveBiasClass(row.net_interpretation);
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const strongest = rows
+    .filter((row) => Number.isFinite(Number(row.net_score)))
+    .sort((a, b) => Math.abs(Number(b.net_score)) - Math.abs(Number(a.net_score)))[0];
+  const strongestText = strongest
+    ? `${strongest.label || ""} ${Number(strongest.strike).toLocaleString("en-IN")}`.trim()
+    : "-";
+  return `
+    <div class="strike-window-brief ${cls}">
+      <div>
+        <span>Selected Window</span>
+        <strong>${escHtml(direction)}</strong>
+        <small>${confidence}% confidence</small>
+      </div>
+      <div>
+        <span>Strike Breadth</span>
+        <strong><b class="bull">${countByBias.bull || 0}</b>/<b class="bear">${countByBias.bear || 0}</b>/<b class="warn">${countByBias.neut || 0}</b></strong>
+        <small>Bull / Bear / Mixed</small>
+      </div>
+      <div>
+        <span>Strongest Strike</span>
+        <strong>${escHtml(strongestText)}</strong>
+        <small>Score ${strongest ? signedPrice(strongest.net_score) : "-"}</small>
+      </div>
+      <div>
+        <span>Baseline</span>
+        <strong>${windowData.baseline_timestamp ? formatTime(windowData.baseline_timestamp) : "-"}</strong>
+        <small>${escHtml(windowData.available ? "Compared with live snapshot" : windowData.reason || "Waiting")}</small>
+      </div>
     </div>`;
 }
 
@@ -1794,21 +1844,26 @@ function renderPositioningNotes(live = {}, trend = {}, day = {}) {
 function renderLiveStrikeTable(rows, windowData = {}) {
   if (!rows.length) return '<div class="empty-state">No five-strike rows available.</div>';
   return `
-    <div class="strike-card-list">
+    <div class="strike-card-list" aria-label="Five strike intelligence cards">
       ${rows.map((row) => renderStrikeCard(row, windowData)).join("")}
     </div>`;
 }
 
 function renderStrikeCard(row, windowData = {}) {
   const finalCls = liveBiasClass(row.net_interpretation);
+  const score = Number(row.net_score);
+  const scoreText = Number.isFinite(score) ? signedPrice(score) : "-";
   return `
     <article class="strike-intel-card ${row.is_atm ? "atm-card" : ""} ${finalCls}">
       <div class="strike-card-head">
         <div>
-          <strong>${escHtml(row.label || "")} · ${Number(row.strike).toLocaleString("en-IN")}</strong>
-          ${row.is_atm ? "<span>ATM focus strike</span>" : "<span>Nearby strike</span>"}
+          <span>${row.is_atm ? "ATM focus" : "Nearby strike"}</span>
+          <strong>${escHtml(row.label || "")} &middot; ${Number(row.strike).toLocaleString("en-IN")}</strong>
         </div>
-        <div class="strike-final-pill ${finalCls}">${escHtml(row.net_interpretation || "NEUTRAL")}</div>
+        <div class="strike-final-wrap">
+          <div class="strike-final-pill ${finalCls}">${escHtml(row.net_interpretation || "NEUTRAL")}</div>
+          <small>Score ${escHtml(scoreText)}</small>
+        </div>
       </div>
       <div class="strike-mini-grid">
         ${renderStrikeMiniSide("CALL", row.call)}
@@ -1839,7 +1894,7 @@ function renderStrikeMiniSide(label, side = {}) {
         <b>${escHtml(side.bias || "NEUTRAL")}</b>
       </div>
       <strong>${escHtml(side.positioning || "Insufficient Data")}</strong>
-      <div class="strike-mini-ltp">LTP ${fmtPrice(side.ltp)}</div>
+      <div class="strike-mini-ltp"><span>LTP</span><b>${fmtPrice(side.ltp)}</b></div>
       <div class="strike-mini-moves">
         <div class="${oiMove.cls}">
           <span>OI</span>
