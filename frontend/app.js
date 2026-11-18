@@ -1729,7 +1729,6 @@ function liveLevel(name, value, cls) {
 function renderLiveWindowSelector(windows = {}) {
   const options = [
     ["3m", "3 Min"],
-    ["5m", "5 Min"],
     ["15m", "15 Min"],
     ["session", "Session"],
   ];
