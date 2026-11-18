@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="up" x1="14" y1="86" x2="112" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#00df24"/>
+      <stop offset="0.58" stop-color="#20ff00"/>
+      <stop offset="1" stop-color="#96ff33"/>
+    </linearGradient>
+    <linearGradient id="down" x1="16" y1="92" x2="116" y2="98" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff1400"/>
+      <stop offset="0.55" stop-color="#ff3a22"/>
+      <stop offset="1" stop-color="#ff0202"/>
+    </linearGradient>
+    <filter id="greenGlow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="3.4" result="blur"/>
+      <feFlood flood-color="#20ff00" flood-opacity="0.72"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="redGlow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="3.4" result="blur"/>
+      <feFlood flood-color="#ff1600" flood-opacity="0.72"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <path d="M13 83 L41 36 L65 62 L95 27" fill="none" stroke="#d7ffd1" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" filter="url(#greenGlow)"/>
+  <path d="M13 83 L41 36 L65 62 L95 27" fill="none" stroke="url(#up)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M87 30 L112 20 L106 47 Z" fill="#45ff0a" stroke="#d7ffd1" stroke-width="3" stroke-linejoin="round" filter="url(#greenGlow)"/>
+
+  <path d="M17 93 L42 56 L66 85 L90 62 L107 96" fill="none" stroke="#ffd3cc" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" filter="url(#redGlow)"/>
+  <path d="M17 93 L42 56 L66 85 L90 62 L107 96" fill="none" stroke="url(#down)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M94 95 L116 109 L115 82 Z" fill="#ff1300" stroke="#ffd3cc" stroke-width="3" stroke-linejoin="round" filter="url(#redGlow)"/>
+</svg>
