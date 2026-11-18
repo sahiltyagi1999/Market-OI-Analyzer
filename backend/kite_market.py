@@ -434,6 +434,22 @@ class KiteMarketService:
         self._last_snapshot = result
         return result
 
+    def build_stored_snapshot(self, snapshot, history_override=None):
+        snapshot = deepcopy(snapshot or {})
+        if not snapshot.get("rows"):
+            raise KiteDataError("No saved live snapshot is available.")
+        history = normalize_history(history_override or [], snapshot)
+        status = self.status()
+        analysis = analyze_options_market(snapshot, history, self.weights, status, day_history=history)
+        snapshot["levels"] = analysis.get("support_resistance")
+        return {
+            "snapshot": snapshot,
+            "analysis": analysis,
+            "status": status,
+            "cached": True,
+            "history_count": len(history),
+        }
+
     def configured(self):
         return bool(self.api_key and self.access_token and self.auth_state != AUTH_REQUIRED)
 

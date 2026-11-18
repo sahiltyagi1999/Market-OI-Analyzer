@@ -293,6 +293,18 @@ def load_live_snapshot_history(username, instrument="NIFTY", trading_day=None, l
     return [doc.get("snapshot") for doc in docs if doc.get("snapshot")]
 
 
+def load_latest_live_snapshot_history(username, instrument="NIFTY", limit=180):
+    if live_snapshots_collection is None:
+        return None
+    latest = live_snapshots_collection.find_one(
+        {"username": username, "instrument": instrument},
+        sort=[("timestamp", DESCENDING)],
+    )
+    if not latest:
+        return []
+    return load_live_snapshot_history(username, instrument, latest.get("trading_day"), limit)
+
+
 def save_live_snapshot(username, payload):
     if live_snapshots_collection is None:
         return {"saved": False, "reason": "mongo_not_configured"}
@@ -349,15 +361,22 @@ def live_options_snapshot():
     expiry = request.args.get("expiry") or None
     force = request.args.get("refresh") in {"1", "true", "yes"}
     try:
-        if market_service.status().get("marketState") != "OPEN":
-            return kite_error_payload("KITE_MARKET_CLOSED", market_hours_message(), False, 409)
-        history = load_live_snapshot_history(username, "NIFTY")
+        status = market_service.status()
+        market_is_open = status.get("marketState") == "OPEN"
+        history = load_live_snapshot_history(username, "NIFTY") if market_is_open else load_latest_live_snapshot_history(username, "NIFTY")
         db_history_count = len(history or [])
-        payload = market_service.build_live_snapshot(expiry=expiry, force=force, history_override=history)
+        if market_is_open:
+            payload = market_service.build_live_snapshot(expiry=expiry, force=force, history_override=history)
+        elif history:
+            payload = market_service.build_stored_snapshot(history[-1], history_override=history)
+            payload["marketClosed"] = True
+            payload["message"] = market_hours_message()
+        else:
+            return kite_error_payload("KITE_MARKET_CLOSED", f"{market_hours_message()} No saved live snapshot is available yet.", False, 409)
         if not payload.get("cached"):
             payload["storage"] = save_live_snapshot(username, payload)
         else:
-            payload["storage"] = {"saved": False, "reason": "cached_snapshot"}
+            payload["storage"] = {"saved": False, "reason": "market_closed_saved_snapshot" if payload.get("marketClosed") else "cached_snapshot"}
         payload["storage"]["db_history_count"] = db_history_count
         payload["storage"]["analysis_history_count"] = payload.get("history_count", db_history_count)
         payload["success"] = True

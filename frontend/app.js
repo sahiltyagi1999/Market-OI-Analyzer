@@ -25,6 +25,7 @@ let brightMode = localStorage.getItem("oi_bright_mode") === "1";
 const LIVE_REFRESH_MS = 30000;
 const LIVE_MARKET_OPEN_MINUTES = 9 * 60;
 const LIVE_MARKET_CLOSE_MINUTES = 15 * 60 + 30;
+const LIVE_CACHE_KEY = "oi_last_live_options_payload";
 document.documentElement.classList.toggle("bright-mode", brightMode);
 
 const CONFIG = window.OI_ANALYZER_CONFIG || {};
@@ -264,6 +265,7 @@ function logout() {
   currentUser = "";
   localStorage.removeItem("oi_auth_token");
   localStorage.removeItem("oi_username");
+  localStorage.removeItem(LIVE_CACHE_KEY);
   reset();
   currentView = "live";
   liveLoaded = false;
@@ -1228,20 +1230,15 @@ function scheduleLiveRefresh() {
 
 async function loadLiveOptions(forceRefresh = false) {
   if (liveLoading || !authToken) return;
-  const marketWindow = liveMarketWindow();
-  if (!marketWindow.open) {
-    renderLiveMarketClosed(marketWindow);
-    scheduleLiveRefresh();
-    return;
-  }
   liveLoading = true;
   const body = document.getElementById("liveBody");
   const btn = document.getElementById("liveRefreshBtn");
   const sourceState = document.getElementById("liveSourceState");
   btn.disabled = true;
-  sourceState.textContent = "Fetching";
+  const marketWindow = liveMarketWindow();
+  sourceState.textContent = marketWindow.open ? "Fetching" : "Loading saved";
   if (!liveLoaded) {
-    body.innerHTML = '<div class="ai-loading"><div class="spin"></div>Building live NIFTY option chain from Kite...</div>';
+    body.innerHTML = `<div class="ai-loading"><div class="spin"></div>${marketWindow.open ? "Building live NIFTY option chain from Kite..." : "Loading the last saved NIFTY snapshot..."}</div>`;
   }
 
   try {
@@ -1258,18 +1255,54 @@ async function loadLiveOptions(forceRefresh = false) {
     }
     liveLoaded = true;
     window.lastLiveOptionsData = data;
-    sourceState.textContent = kiteStatusLabel(data.status);
-    sourceState.className = kiteStatusClass(data.status);
+    cacheLiveOptionsPayload(data);
+    sourceState.textContent = data.marketClosed ? "Saved Snapshot" : kiteStatusLabel(data.status);
+    sourceState.className = data.marketClosed ? "warn" : kiteStatusClass(data.status);
     renderLiveOptions(data);
   } catch (error) {
     const status = error.data?.status;
-    sourceState.textContent = kiteStatusLabel(status, error.data?.error);
-    sourceState.className = kiteStatusClass(status, error.data?.error);
-    renderLiveError(error.message || "Could not load live options.", status, error.data || {});
+    const cached = loadCachedLiveOptionsPayload();
+    if (cached && (error.data?.error === "KITE_MARKET_CLOSED" || !liveLoaded)) {
+      const cachedPayload = {
+        ...cached,
+        marketClosed: true,
+        message: error.data?.message || "Market is closed. Showing the last captured snapshot from this browser.",
+      };
+      liveLoaded = true;
+      window.lastLiveOptionsData = cachedPayload;
+      sourceState.textContent = "Saved Snapshot";
+      sourceState.className = "warn";
+      renderLiveOptions(cachedPayload);
+    } else {
+      sourceState.textContent = kiteStatusLabel(status, error.data?.error);
+      sourceState.className = kiteStatusClass(status, error.data?.error);
+      renderLiveError(error.message || "Could not load live options.", status, error.data || {});
+    }
   } finally {
     liveLoading = false;
     btn.disabled = false;
     scheduleLiveRefresh();
+  }
+}
+
+function cacheLiveOptionsPayload(payload) {
+  if (!payload?.snapshot?.rows?.length) return;
+  try {
+    localStorage.setItem(LIVE_CACHE_KEY, JSON.stringify({
+      ...payload,
+      cachedAt: new Date().toISOString(),
+    }));
+  } catch (error) {
+    // Best-effort browser cache; live rendering should not depend on storage.
+  }
+}
+
+function loadCachedLiveOptionsPayload() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(LIVE_CACHE_KEY) || "null");
+    return cached?.snapshot?.rows?.length ? cached : null;
+  } catch (error) {
+    return null;
   }
 }
 
@@ -1426,6 +1459,7 @@ function renderLiveOptions(data) {
 
   document.getElementById("liveBody").innerHTML = `
     <div class="live-board">
+      ${data.marketClosed ? `<div class="table-note warn">${escHtml(data.message || "Market is closed. Showing the last saved live snapshot.")}</div>` : ""}
       <section class="design-panel overall-panel ${cls}">
         <div class="design-panel-head">
           <h2>OVERALL MARKET DIRECTION</h2>
