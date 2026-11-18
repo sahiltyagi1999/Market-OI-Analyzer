@@ -81,7 +81,11 @@ app = Flask(__name__)
 CORS(
     app,
     resources={
-        r"/api/*": {"origins": get_allowed_origins()},
+        r"/api/*": {
+            "origins": "*",
+            "allow_headers": ["Authorization", "Content-Type"],
+            "methods": ["GET", "POST", "OPTIONS"],
+        },
         r"/health": {"origins": "*"},
     },
     supports_credentials=False,
